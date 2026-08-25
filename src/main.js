@@ -114,17 +114,28 @@ function readInput() {
   if (settings.invertPitch) iy = -iy;
   if (settings.invertRoll) ix = -ix;
 
-  // Camera-relative steering: "away from the camera" must keep meaning that
-  // after the camera has swung around a corner.
-  let dx = ix, dz = iy;
-  if (settings.camRelative && view) {
-    const cy = Math.cos(view.camYaw), sy = Math.sin(view.camYaw);
-    dx = ix * cy + iy * sy;
-    dz = -ix * sy + iy * cy;
-  }
-  // pitch drives +Z, roll drives -X
-  input.x = dz;
-  input.z = -dx;
+  /* Steering, derived rather than guessed -- the old version was wrong in two
+   * ways at once and they hid each other.
+   *
+   * The camera sits at ball + (-sin y, ., -cos y) * dist, so it looks along
+   * f = (sin y, cos y) and its right hand is r = f x up = (-cos y, sin y).
+   * The world direction the player is asking for is therefore
+   *     W = iy * f + ix * r
+   * and the sim takes accel_z = +input.x, accel_x = -input.z.
+   *
+   * The bug this replaces had `input.z = -dx`, which pointed ROLL the wrong way:
+   * world +X projects to screen LEFT from behind the ball, so D drove left and
+   * A drove right. No headless test could see it -- the pilot steers in world
+   * space, where the sim was always self-consistent. Only a person looking at
+   * the screen experiences the inversion.
+   *
+   * The second fault was that view.camYaw was assigned 0 at construction and
+   * never again, so this whole block was an identity transform and
+   * "Camera-relative" steering had never once been applied. */
+  const yaw = (settings.camRelative && view) ? view.camYaw : 0;
+  const cy = Math.cos(yaw), sy = Math.sin(yaw);
+  input.x = iy * cy + ix * sy;          // +Z component of the asked-for heading
+  input.z = ix * cy - iy * sy;          // and the roll that produces its -X part
   return input;
 }
 

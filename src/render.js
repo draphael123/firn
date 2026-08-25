@@ -179,6 +179,9 @@ export class View {
     this.buildBall();
     this.buildSnow();
 
+    /* Kept in step with the director every frame in update(). It used to be
+     * assigned here and nowhere else, which silently reduced camera-relative
+     * steering to an identity transform. */
     this.camYaw = 0;
     this.camPos = new THREE.Vector3();
     this.camLook = new THREE.Vector3();
@@ -765,6 +768,9 @@ export class View {
     updateBall(this.B, sim, dt, this.settings);
 
     this.director.update(this, sim, dt);
+    // The steering transform reads this; it is the camera's heading around the
+    // ball, and it has to be refreshed wherever the director moves the camera.
+    this.camYaw = this.director.yaw;
 
     // Carry the shadow box with the ball, or it only shadows the start.
     // the sun sits far off along the key light's own direction
@@ -852,6 +858,7 @@ export class View {
     this.ballGroup.position.set(b.p.x, b.p.y, b.p.z);
     this.ballGroup.getWorldPosition(this._ballWorld);
     this.director.snap(this, sim);
+    this.camYaw = this.director.yaw;
   }
 
   /** The camera director: `follow` in play, plus intro / arrival / fall / wake. */

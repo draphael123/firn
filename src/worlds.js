@@ -85,7 +85,7 @@ export const WORLDS = {
     sky: [0x241f22, 0xa79a8c, 0x140f0c],
     fog: 0xa2968a, fogNear: 46, fogFar: 430,
     key: 0xffe2bc, keyPower: 2.1, hemi: 0x8e8378, ambient: 1.9,
-    deck: { stone: 0x565049, stone2: 0x47423d, rail: 0x33302c },
+    deck: { stone: 0x6a6459, rail: 0x403b33, stone2: 0x5b5649 },
     ground: 'rock', groundColor: 0x2a2521,
     ridges: [[360, 130, 0x1d1a18, 0x8e857a], [680, 240, 0x2f2a26, 0xa89c8e]],
     ceiling: null,
@@ -97,7 +97,7 @@ export const WORLDS = {
     sky: [0x2b3238, 0x8f9a9c, 0x1a1e20],
     fog: 0x8f9a9c, fogNear: 34, fogFar: 340,
     key: 0xe8e4da, keyPower: 1.8, hemi: 0x7d8688, ambient: 2.0,
-    deck: { stone: 0x5f625e, stone2: 0x515450, rail: 0x3a3c39 },
+    deck: { stone: 0x71787a, stone2: 0x616869, rail: 0x434849 },
     ground: 'rock', groundColor: 0x74786f,
     ridges: [[330, 90, 0x3a3f40, 0x8d9698]],
     ceiling: null,
@@ -236,11 +236,18 @@ export function deckTexture(world) {
   const rnd = mulberry32(world.id.length * 313 + 5);
   const icy = world.band < 0.75;
 
-  g.fillStyle = icy ? '#e4eef2' : '#6d6862';
+  /* The base fill MULTIPLIES the material colour, so it must stay near white
+   * and let world.deck.stone decide how dark the road is. It used to be
+   * #6d6862 for warm worlds, which rendered them at 40% of the authored value:
+   * the deck measured L=37 against a 203 sky -- the darkest surface in the
+   * game, four times darker than the terrain it crosses, and dark enough that
+   * the shadows, the contact darkening and the frost all landed on it
+   * invisibly. The wet-stone look belongs in deck.stone, not in here. */
+  g.fillStyle = icy ? '#e4eef2' : '#d6d2cb';
   g.fillRect(0, 0, N, N);
 
   // flagstone joins: the road under the snow
-  g.strokeStyle = icy ? 'rgba(120,146,160,.30)' : 'rgba(30,27,24,.55)';
+  g.strokeStyle = icy ? 'rgba(120,146,160,.30)' : 'rgba(84,78,70,.34)';
   g.lineWidth = 2;
   const cell = N / 4;
   for (let i = 0; i <= 4; i++) {
@@ -261,7 +268,7 @@ export function deckTexture(world) {
     g.closePath();
     g.fillStyle = icy
       ? `rgba(255,255,255,${0.12 + rnd() * 0.4})`
-      : `rgba(${28 + rnd() * 26 | 0},${26 + rnd() * 22 | 0},${24 + rnd() * 20 | 0},${0.2 + rnd() * 0.4})`;
+      : `rgba(${104 + rnd() * 34 | 0},${104 + rnd() * 32 | 0},${102 + rnd() * 30 | 0},${0.07 + rnd() * 0.13})`;
     g.fill();
   }
 

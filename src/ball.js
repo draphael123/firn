@@ -25,8 +25,8 @@ const ICE = 0xdbeef5;
  * silhouette you only ever glimpse. Seen through pale ice that is not a
  * creature, it is a void. It is fur now, warm against the blue of the shell,
  * with a paler muzzle and belly so the SHAPE reads and not just the mass. */
-const SLEEPER = 0x8a6236;
-const SLEEPER_PALE = 0xd8c39d;
+const SLEEPER = 0x7d5326;
+const SLEEPER_PALE = 0xe8d7b4;
 const GOLD = 0xc9a961;
 
 /** Blotchy frost, as an alpha map. Patches are what make the spin visible. */
@@ -202,7 +202,7 @@ const SLEEPER_LAYER = 1;
  * which is the read that actually matters.
  */
 function sleeperScale(r) {
-  return (T.R_MIN * 0.95 + (r - T.R_MIN) * 0.45) / SLEEPER_BOUND;
+  return (T.R_MIN * 0.95 + (r - T.R_MIN) * 0.62) / SLEEPER_BOUND;
 }
 
 export function buildBall(settings) {
@@ -265,7 +265,7 @@ export function buildBall(settings) {
    * inner face of the ice as well and blows the whole ball out into a white
    * bulb -- the passenger less visible than before, not more. */
   const glow = new THREE.PointLight(GOLD, 0, 8, 2);
-  const fill = new THREE.PointLight(0xfff0d8, 1.5, 2.2, 2);
+  const fill = new THREE.PointLight(0xfff0d8, 2.4, 2.2, 2);
   fill.position.set(0.35, 0.5, 0.5);
   fill.layers.set(SLEEPER_LAYER);
 
@@ -307,16 +307,18 @@ export function updateBall(B, sim, dt, settings) {
    * Thickness and attenuation carry "how much ice" now; transmission stays high
    * enough to see through at any shell. */
   if (B.iceMat.thickness !== undefined) {
-    B.iceMat.transmission = 0.96 - shell * 0.12;
-    B.iceMat.roughness = 0.05 + shell * 0.22;
+    B.iceMat.transmission = 0.97 - shell * 0.07;
+    B.iceMat.roughness = 0.05 + shell * 0.14;
     B.iceMat.thickness = 0.15 + shell * 0.9;
     B.iceMat.attenuationDistance = 1.4 + (1 - shell) * 6;
   } else {
-    B.iceMat.opacity = 0.30 + shell * 0.34;
+    /* The plain shell is what phones get, and it is the one that hid the
+     * passenger worst: a flat alpha of 0.64 over an unlit creature. */
+    B.iceMat.opacity = 0.20 + shell * 0.24;
   }
   // Frost IS the shell: it thins off the ball as you melt. Capped well short of
   // opaque so it never becomes a lid over the passenger.
-  B.rimeMat.opacity = Math.pow(shell, 0.75) * 0.62;
+  B.rimeMat.opacity = Math.pow(shell, 0.75) * 0.40;
   B.rime.visible = shell > 0.02;
 
   // ---- rolling. This is the whole point of the rime layer.
@@ -407,7 +409,7 @@ export function updateBall(B, sim, dt, settings) {
   B.paleMat.emissiveIntensity = agit * 0.9 + b.startle * 0.2;
   // the interior fill rides with the shell so it stays a lit creature, not a
   // shadow, at every thickness
-  B.fill.intensity = 1.5 + agit * 1.2;
+  B.fill.intensity = 2.4 + agit * 1.4;
   B.fill.distance = r * 4.2;
   B.glow.intensity = agit * 2.2 + b.startle * 0.8 + B.crackAmt * 1.5;
 }
