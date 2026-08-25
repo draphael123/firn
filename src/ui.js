@@ -15,8 +15,8 @@ const LS = 'firn.v1';
 /** One schema drives the model, the defaults, the storage and the rendering. */
 export const SETTINGS_SCHEMA = [
   { group: 'Control', items: [
-    { key: 'tiltMax',   label: 'Tilt limit',     values: [0.32, 0.42, 0.52], names: ['18°', '24°', '30°'], def: 1 },
-    { key: 'tiltRate',  label: 'Tilt response',  values: [1.8, 2.6, 3.6], names: ['Measured', 'Normal', 'Quick'], def: 1 },
+    { key: 'tiltMax',   label: 'Tilt limit',     values: [0.36, 0.46, 0.56], names: ['21°', '26°', '32°'], def: 1 },
+    { key: 'tiltRate',  label: 'Tilt response',  values: [3.2, 5.0, 7.5], names: ['Measured', 'Normal', 'Quick'], def: 1 },
     // Camera-relative is the default because "away from the camera" has to keep
     // meaning that after the camera swings round a corner. Fixed is kept for
     // anyone who finds a lagging camera swimmy.
@@ -27,7 +27,7 @@ export const SETTINGS_SCHEMA = [
   { group: 'Camera', items: [
     { key: 'camFollow', label: 'Follow',   values: [2.0, 3.4, 5.5], names: ['Loose', 'Normal', 'Tight'], def: 1 },
     { key: 'camDist',   label: 'Distance', values: [9.5, 12.5, 15.5], names: ['Close', 'Normal', 'Far'], def: 1 },
-    { key: 'camHeight', label: 'Height',   values: [3.4, 4.7, 6.3], names: ['Low', 'Normal', 'High'], def: 1 },
+    { key: 'camHeight', label: 'Height',   values: [4.3, 5.6, 7.2], names: ['Low', 'Normal', 'High'], def: 1 },
     { key: 'shake',     label: 'Impact shake', bool: true, def: 1 },
   ] },
   { group: 'Picture', items: [

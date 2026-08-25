@@ -40,13 +40,19 @@
   /* ------------------------------------------------------------ overlays */
   #vig {
     position: fixed; inset: 0; pointer-events: none; z-index: 2;
-    background: radial-gradient(ellipse 132% 104% at 50% 46%, transparent 56%, rgba(3,6,9,.50) 100%);
+    background: radial-gradient(ellipse 128% 100% at 50% 46%, transparent 44%, rgba(4,10,16,.62) 100%);
   }
+  /* The stage-start flash. Driven by a keyframe animation, never by a
+     transition: a transition stalls mid-flight whenever the tab is throttled
+     or unfocused, and this element then sits at ~0.8 opaque black over the
+     whole game with no way back. The classless default is opacity 0, so
+     removing the class always clears it outright. */
   #fade {
     position: fixed; inset: 0; pointer-events: none; z-index: 40;
-    background: var(--ink); opacity: 0; transition: opacity .34s ease;
+    background: var(--ink); opacity: 0;
   }
-  #fade.on { opacity: 1; }
+  #fade.on { animation: flashOut .42s ease-out both; }
+  @keyframes flashOut { from { opacity: 1; } to { opacity: 0; } }
 
   /* Screens sit over the 3D and scrim it from the LEFT, so the scene stays
      visible on the right. A centred card would read as a web page. */
@@ -171,6 +177,17 @@
 
   /* ------------------------------------------------------------ HUD */
   #hud { position: fixed; inset: 0; z-index: 6; pointer-events: none; }
+  /* The world can be a bright ice field, so the HUD cannot rely on the scene
+     being dark. Corner scrims plus a shadow keep it legible over anything. */
+  #hud::before, #hud::after {
+    content: ''; position: absolute; left: 0; right: 0; height: 190px; pointer-events: none;
+  }
+  #hud::before { top: 0; background: linear-gradient(to bottom, rgba(5,12,18,.55), transparent); }
+  #hud::after  { bottom: 0; background: linear-gradient(to top, rgba(5,12,18,.60), transparent); }
+  #hud > * { position: relative; }
+  #hud .hlbl, #hud .hnum, #stageName, #shellPct, #meltRate {
+    text-shadow: 0 1px 10px rgba(3,8,12,.85), 0 0 2px rgba(3,8,12,.7);
+  }
   #hud .tl { position: absolute; top: 22px; left: var(--pad); }
   #hud .tr { position: absolute; top: 22px; right: var(--pad); text-align: right; }
   #hud .bl { position: absolute; bottom: 26px; left: var(--pad); width: min(300px, 40vw); }

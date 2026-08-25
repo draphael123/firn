@@ -41,13 +41,17 @@ const plate = (x0, x1, z0, z1, top, kind = 'stone') => ({
  * SINK is how far the kerb is buried in the deck. A kerb resting exactly on
  * the surface shares a plane with it and z-fights into a crawling moire along
  * every edge. The extra height is added back so the collidable top is
- * unchanged -- this is a rendering fix that must not become a physics change. */
+ * unchanged -- this is a rendering fix that must not become a physics change.
+ *
+ * Kerbs are 0.9 wide rather than 0.7 so they OVERLAP the deck they guard by
+ * ~0.1 instead of merely abutting it. Two colliders that touch on exactly one
+ * plane leave a hairline seam the ball can catch on at speed. */
 const SINK = 0.08;
 const railZ = (x, z0, z1, top, h = RAIL_H) => ({
-  p: [x, top + h / 2 - SINK, (z0 + z1) / 2], s: [0.7, h + SINK * 2, z1 - z0], kind: 'rail',
+  p: [x, top + h / 2 - SINK, (z0 + z1) / 2], s: [0.9, h + SINK * 2, z1 - z0], kind: 'rail',
 });
 const railX = (z, x0, x1, top, h = RAIL_H) => ({
-  p: [(x0 + x1) / 2, top + h / 2 - SINK, z], s: [x1 - x0, h + SINK * 2, 0.7], kind: 'rail',
+  p: [(x0 + x1) / 2, top + h / 2 - SINK, z], s: [x1 - x0, h + SINK * 2, 0.9], kind: 'rail',
 });
 
 /**
@@ -80,9 +84,11 @@ function gate(z, x0, x1, ox0, ox1, top, open = GATE_OPEN) {
   return [
     { p: [(x0 + ox0) / 2, top + H / 2, z], s: [ox0 - x0, H, 1.0], kind: 'gate' },
     { p: [(ox1 + x1) / 2, top + H / 2, z], s: [x1 - ox1, H, 1.0], kind: 'gate' },
-    { // lintel: its bottom edge sits exactly `open` above the floor
+    { // lintel: its bottom edge sits exactly `open` above the floor.
+      // `open` is carried through to the sim so a refusal can be EXPLAINED --
+      // a hard gate with no feedback is indistinguishable from a stuck ball.
       p: [(ox0 + ox1) / 2, top + open + (H - open) / 2, z],
-      s: [ox1 - ox0, H - open, 1.0], kind: 'gate',
+      s: [ox1 - ox0, H - open, 1.0], kind: 'gate', open,
     },
   ];
 }

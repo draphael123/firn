@@ -15,13 +15,13 @@
  */
 
 import * as THREE from '../vendor/three.module.js';
-import { T, radiusFor } from './sim.js';
+import { T, radiusFor, mulberry32 } from './sim.js';
 
 const C = {
   fog:    0x0d151a,
-  stone:  0x8c9aa2,
-  stone2: 0x76858e,
-  rail:   0x5d6d77,
+  stone:  0x69777f,
+  stone2: 0x58656d,
+  rail:   0x414d55,
   warm:   0xa86b52,
   gate:   0x63787f,
   grate:  0x4f6068,
@@ -54,12 +54,132 @@ function makeEnvironment(renderer) {
   return env;
 }
 
+
+/** How much of the stage tilt the camera offset inherits. See update(). */
+const CAM_TILT_FOLLOW = 0.62;
+
+/** How far below the causeway the frozen sea sits. */
+const SEA_Y = -74;
+
+/**
+ * A ring of mountain silhouette. Heights come from layered sines with
+ * seed-derived phases, so each ring is a different range rather than three
+ * copies of one profile at different scales.
+ */
+function ridgeRing(radius, baseY, height, segs, rnd, baseHex, peakHex) {
+  const ph = [rnd() * 6.283, rnd() * 6.283, rnd() * 6.283, rnd() * 6.283];
+  const hAt = (a) => Math.max(0.10, Math.min(1,
+      0.46
+    + 0.30 * Math.sin(a * 2 + ph[0])
+    + 0.18 * Math.sin(a * 5 + ph[1])
+    + 0.11 * Math.sin(a * 11 + ph[2])
+    + 0.06 * Math.sin(a * 23 + ph[3])));
+
+  const pos = [], col = [];
+  const cb = new THREE.Color(baseHex), cp = new THREE.Color(peakHex), c = new THREE.Color();
+  const push = (x, y, z, t) => {
+    pos.push(x, y, z);
+    c.copy(cb).lerp(cp, t);
+    col.push(c.r, c.g, c.b);
+  };
+  for (let i = 0; i < segs; i++) {
+    const a0 = (i / segs) * Math.PI * 2, a1 = ((i + 1) / segs) * Math.PI * 2;
+    const h0 = hAt(a0) * height, h1 = hAt(a1) * height;
+    const x0 = Math.cos(a0) * radius, z0 = Math.sin(a0) * radius;
+    const x1 = Math.cos(a1) * radius, z1 = Math.sin(a1) * radius;
+    // two triangles, wound so the INSIDE of the ring faces the camera
+    push(x0, baseY, z0, 0); push(x1, baseY, z1, 0); push(x1, baseY + h1, z1, 1);
+    push(x0, baseY, z0, 0); push(x1, baseY + h1, z1, 1); push(x0, baseY + h0, z0, 1);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+    vertexColors: true, side: THREE.DoubleSide, depthWrite: true, fog: true,
+  }));
+  m.frustumCulled = false;
+  return m;
+}
+
+/** Pale sheet ice, scored with leads and refrozen cracks. */
+function makeSeaTexture() {
+  const N = 1024;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = N;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#dbe9ef'; g.fillRect(0, 0, N, N);
+
+  const rnd = mulberry32(5150);
+  // broad floes
+  for (let i = 0; i < 150; i++) {
+    g.beginPath();
+    const x = rnd() * N, y = rnd() * N, r = 24 + rnd() * 130;
+    for (let k = 0; k <= 10; k++) {
+      const a = (k / 10) * Math.PI * 2;
+      const rr = r * (0.7 + rnd() * 0.5);
+      const px = x + Math.cos(a) * rr, py = y + Math.sin(a) * rr;
+      k ? g.lineTo(px, py) : g.moveTo(px, py);
+    }
+    g.closePath();
+    const v = 224 + Math.floor(rnd() * 26);
+    g.fillStyle = `rgb(${v},${v + 4},${v + 8})`;
+    g.fill();
+  }
+  // dark open leads
+  g.lineCap = 'round';
+  for (let i = 0; i < 90; i++) {
+    g.beginPath();
+    let x = rnd() * N, y = rnd() * N;
+    g.moveTo(x, y);
+    for (let k = 0; k < 7; k++) {
+      x += (rnd() - 0.5) * 190; y += (rnd() - 0.5) * 190;
+      g.lineTo(x, y);
+    }
+    g.strokeStyle = `rgba(96,132,150,${0.18 + rnd() * 0.35})`;
+    g.lineWidth = 0.7 + rnd() * 3.4;
+    g.stroke();
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;   // unflagged canvas textures render washed
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(9, 9);
+  t.anisotropy = 4;
+  return t;
+}
+
+/** A soft horizontal band, for haze lying on the ice. */
+function makeHazeTexture() {
+  const W = 256, H = 64;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const g = cv.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, 'rgba(214,232,240,0)');
+  grad.addColorStop(0.5, 'rgba(214,232,240,1)');
+  grad.addColorStop(1, 'rgba(214,232,240,0)');
+  g.fillStyle = grad; g.fillRect(0, 0, W, H);
+  // break the band up so it does not read as a printed stripe
+  g.globalCompositeOperation = 'destination-out';
+  const rnd = mulberry32(77);
+  for (let i = 0; i < 70; i++) {
+    g.beginPath();
+    g.arc(rnd() * W, rnd() * H, 4 + rnd() * 22, 0, Math.PI * 2);
+    g.fillStyle = `rgba(0,0,0,${0.12 + rnd() * 0.3})`;
+    g.fill();
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = THREE.RepeatWrapping;
+  t.repeat.set(6, 1);
+  return t;
+}
+
 export function createRenderer(canvas, settings) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  renderer.setClearColor(0x3c5666, 1);
+  renderer.setClearColor(0x5d8095, 1);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = settings.exposure || 2.1;
+  renderer.toneMappingExposure = settings.exposure || 1.75;
   renderer.shadowMap.enabled = !!settings.shadows;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   return renderer;
@@ -72,9 +192,13 @@ export class View {
     this.env = makeEnvironment(this.renderer);
 
     this.scene = new THREE.Scene();
-    // Fog has to sit ON the horizon colour or the stage dissolves into a
-    // different grey than the sky behind it and everything reads flat.
-    this.scene.fog = new THREE.Fog(0x3c5666, 90, 340);
+    /* Fog must reach PAST the furthest ridge ring (820) or aerial perspective
+     * turns into a wall and the mountains vanish. Near is set beyond the whole
+     * playfield so the causeway itself stays crisp -- fog over the surface you
+     * are steering on costs readability and buys nothing. Colour matches the
+     * sky's horizon band so distant ridges dissolve into it rather than into a
+     * differently-tinted grey. */
+    this.scene.fog = new THREE.Fog(0x5d8095, 110, 880);
     this.scene.environment = this.env;
 
     this.camera = new THREE.PerspectiveCamera(52, 1, 0.1, 1400);
@@ -100,10 +224,29 @@ export class View {
     rim.position.set(30, 18, 60);
     this.scene.add(rim);
 
-    this.stageGroup = new THREE.Group();
-    this.scene.add(this.stageGroup);
+    /* The stage tilts about the BALL, not about the world origin.
+     *
+     * Rotating the whole stage about its origin means a ball 120 units down
+     * the course swings ~50 units vertically for 26 degrees of tilt: the
+     * geometry sweeps through the camera and the horizon lurches. Pivoting at
+     * the ball also happens to be the Monkey Ball read -- the world tilts
+     * around you, and you stay put.
+     *
+     *   world = R * (local - pivot) + pivot
+     *
+     * stageRoot carries R and +pivot, stageInner carries -pivot. With pivot
+     * set to the ball's own stage-local position, the ball's world position is
+     * exactly its local position and never moves from tilt at all. */
+    this.stageRoot = new THREE.Group();
+    this.stageInner = new THREE.Group();
+    this.stageRoot.add(this.stageInner);
+    this.scene.add(this.stageRoot);
+    this.stageGroup = this.stageInner;   // everything else builds into here
+    this.solids = [];                    // occlusion targets, set by loadStage
+    this.lintels = [];                   // gate crossbars, lit when they refuse you
 
     this.materials = this.buildMaterials();
+    this.buildWorld();
     this.buildBall();
     this.buildSnow();
 
@@ -114,6 +257,7 @@ export class View {
     this._q = new THREE.Quaternion();
     this._v = new THREE.Vector3();
     this._ballWorld = new THREE.Vector3();
+    this._ray = new THREE.Raycaster();
   }
 
   /** A gradient dome instead of a flat clear colour. A stage floating in a
@@ -127,8 +271,8 @@ export class View {
     const geo = new THREE.SphereGeometry(700, 32, 24);
     const pos = geo.attributes.position;
     const col = new Float32Array(pos.count * 3);
-    const top = new THREE.Color(0x1a3446);
-    const mid = new THREE.Color(0x5d8095);
+    const top = new THREE.Color(0x123045);
+    const mid = new THREE.Color(0x86a8bb);
     const bot = new THREE.Color(0x0d151a);
     const c = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
@@ -143,6 +287,115 @@ export class View {
     }));
     this.sky.frustumCulled = false;
     this.scene.add(this.sky);
+  }
+
+  /* ------------------------------------------------------------- the world
+   *
+   * The stage is a causeway over a frozen sea, and ONLY the causeway tilts.
+   * Everything built here lives in world space and stays level, so the horizon
+   * is a fixed reference you read the tilt against -- which is most of why
+   * Monkey Ball's tilt is legible at all. Tilting the background too would just
+   * read as the camera rolling.
+   *
+   * `far` (sea, ridges, haze) rides with the camera so it never runs out.
+   * `decor` (seracs) is pinned in place so it passes by and gives speed a scale.
+   */
+  buildWorld() {
+    this.far = new THREE.Group();
+    this.scene.add(this.far);
+    this.decor = new THREE.Group();
+    this.scene.add(this.decor);
+
+    const rnd = mulberry32(9161);
+
+    // --- the frozen sea, far below
+    const seaTex = makeSeaTexture();
+    const sea = new THREE.Mesh(
+      new THREE.PlaneGeometry(2200, 2200),
+      new THREE.MeshStandardMaterial({
+        map: seaTex, color: 0xb9d2dd, roughness: 0.62, metalness: 0.05,
+      }),
+    );
+    sea.rotation.x = -Math.PI / 2;
+    sea.position.y = SEA_Y;
+    this.far.add(sea);
+
+    // pressure ridges cracking the sheet: long low pale wedges
+    const crackGeo = new THREE.BoxGeometry(1, 1, 1);
+    const crackMat = new THREE.MeshStandardMaterial({ color: 0xdcecf2, roughness: 0.5 });
+    for (let i = 0; i < 90; i++) {
+      const m = new THREE.Mesh(crackGeo, crackMat);
+      const a = rnd() * Math.PI * 2, r = 40 + rnd() * 900;
+      m.position.set(Math.cos(a) * r, SEA_Y + 0.6, Math.sin(a) * r);
+      m.rotation.y = rnd() * Math.PI;
+      m.scale.set(6 + rnd() * 90, 1.2 + rnd() * 2.6, 1.4 + rnd() * 3);
+      this.far.add(m);
+    }
+
+    // --- three rings of ridgeline, palest and haziest furthest out
+    this.far.add(ridgeRing(300, SEA_Y, 120, 128, mulberry32(11), 0x2c4150, 0x9fbecd));
+    this.far.add(ridgeRing(520, SEA_Y, 210, 128, mulberry32(23), 0x3d5567, 0xbcd4e0));
+    this.far.add(ridgeRing(820, SEA_Y, 330, 96, mulberry32(37), 0x54707f, 0xd2e4ec));
+
+    // --- banded haze lying on the ice, so the ridges have air in front of them.
+    // Open cylinders centred on the camera: a flat plane goes edge-on as soon
+    // as you look along it, which reads as a card popping out of existence.
+    const hazeTex = makeHazeTexture();
+    this.haze = [];
+    for (let i = 0; i < 4; i++) {
+      const r = 240 + i * 190;
+      const m = new THREE.Mesh(
+        new THREE.CylinderGeometry(r, r, 66 + i * 26, 40, 1, true),
+        new THREE.MeshBasicMaterial({
+          map: hazeTex.clone(), transparent: true, opacity: 0.20 - i * 0.035,
+          depthWrite: false, fog: false, side: THREE.BackSide,
+        }),
+      );
+      m.material.map.needsUpdate = true;
+      m.position.y = SEA_Y + 26 + i * 20;
+      m.frustumCulled = false;
+      this.haze.push(m);
+      this.far.add(m);
+    }
+  }
+
+  /** Seracs: angular ice blocks shouldered up out of the sea along the route. */
+  placeDecor(stage) {
+    for (let i = this.decor.children.length - 1; i >= 0; i--) {
+      const c = this.decor.children[i];
+      c.geometry?.dispose();
+      this.decor.remove(c);
+    }
+    const rnd = mulberry32(stage.id.length * 7717 + 13);
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xc2dae4, roughness: 0.42, metalness: 0.02, flatShading: true,
+    });
+    const matDark = new THREE.MeshStandardMaterial({
+      color: 0x86a6b4, roughness: 0.55, metalness: 0.02, flatShading: true,
+    });
+
+    // span the route so they keep passing the whole way down
+    let z0 = 1e9, z1 = -1e9, x0 = 1e9, x1 = -1e9;
+    for (const b of stage.boxes) {
+      z0 = Math.min(z0, b.c[2]); z1 = Math.max(z1, b.c[2]);
+      x0 = Math.min(x0, b.c[0]); x1 = Math.max(x1, b.c[0]);
+    }
+
+    for (let i = 0; i < 120; i++) {
+      const side = rnd() < 0.5 ? -1 : 1;
+      // keep well clear of the causeway itself
+      const x = (side < 0 ? x0 - 18 : x1 + 18) + side * rnd() * 260;
+      const z = z0 - 120 + rnd() * (z1 - z0 + 300);
+      const h = 6 + rnd() * 46;
+      const m = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(1, 0),
+        rnd() < 0.35 ? matDark : mat,
+      );
+      m.position.set(x, SEA_Y + h * 0.42, z);
+      m.scale.set(4 + rnd() * 14, h, 4 + rnd() * 14);
+      m.rotation.set(rnd() * 0.4 - 0.2, rnd() * Math.PI, rnd() * 0.4 - 0.2);
+      this.decor.add(m);
+    }
   }
 
   buildMaterials() {
@@ -236,6 +489,8 @@ export class View {
       this.stageGroup.remove(c);
     }
 
+    this.solids.length = 0;
+    this.lintels = [];
     const box = new THREE.BoxGeometry(1, 1, 1);
     for (const b of stage.boxes) {
       if (b.kind === 'grate') { this.addGrate(b); continue; }
@@ -246,11 +501,17 @@ export class View {
       if (b.rot) m.rotation.set(b.rot[0], b.rot[1], b.rot[2]);
       m.receiveShadow = !!this.settings.shadows;
       m.castShadow = !!this.settings.shadows && b.kind !== 'stone';
+      if (b.open !== undefined) { 
+        m.material = this.materials.gate.clone();
+        this.lintels.push(m);
+      }
       this.stageGroup.add(m);
+      this.solids.push(m);   // only real geometry occludes; decor must not
     }
 
     for (const h of stage.heat) this.addHeat(h);
     this.addGoal(stage);
+    this.placeDecor(stage);
 
     // A cold sun for the hot stages, so warmth has a visible source.
     this.key.intensity = 2.1 + Math.min(1.4, stage.warmth * 90);
@@ -329,8 +590,10 @@ export class View {
     const s = this.settings;
     const b = sim.ball;
 
-    // --- the stage tilts; the camera never does
-    this.stageGroup.rotation.set(sim.tilt.x, 0, sim.tilt.z);
+    // --- the stage tilts about the ball; the camera never tilts at all
+    this.stageRoot.rotation.set(sim.tilt.x, 0, sim.tilt.z);
+    this.stageRoot.position.set(b.p.x, b.p.y, b.p.z);
+    this.stageInner.position.set(-b.p.x, -b.p.y, -b.p.z);
 
     // --- ball
     this.ballGroup.position.set(b.p.x, b.p.y, b.p.z);
@@ -341,12 +604,16 @@ export class View {
     // it. Getting this the wrong way round -- clearing as it thickens -- throws
     // away the one piece of telemetry the ball is supposed to carry.
     if (this.iceMat.thickness !== undefined) {
-      this.iceMat.roughness = 0.05 + shell * 0.40;
-      this.iceMat.thickness = 0.10 + shell * 2.2;
-      this.iceMat.attenuationDistance = 0.30 + (1 - shell) * 4.0;
+      // Transmission is what carries this: near-opaque frosted white at full
+      // shell, fully refractive at zero. Driving it with absorption instead
+      // made a thick ball DARK, which reads as a bowling ball, not ice.
+      this.iceMat.transmission = 1 - shell * 0.74;
+      this.iceMat.roughness = 0.05 + shell * 0.44;
+      this.iceMat.thickness = 0.15 + shell * 0.9;
+      this.iceMat.attenuationDistance = 1.4 + (1 - shell) * 6;
     } else {
-      this.iceMat.roughness = 0.05 + shell * 0.40;
-      this.iceMat.opacity = 0.30 + shell * 0.62;
+      this.iceMat.roughness = 0.05 + shell * 0.44;
+      this.iceMat.opacity = 0.44 + shell * 0.56;
     }
 
     // the sleeper stirs: it glows as the ice thins, and jitters with agitation
@@ -384,19 +651,53 @@ export class View {
 
     const dist = s.camDist + Math.min(6, speed * 0.32);
     const hgt = s.camHeight + Math.min(2.6, speed * 0.1);
+    /* The camera offset rides a FRACTION of the stage's tilt.
+     *
+     * Anchored in world space (factor 0) the deck behind the ball swings up
+     * into the camera the moment you pitch forward -- dist * sin(tilt) is over
+     * 5 units at full lean, which is more than the camera's height above the
+     * floor. That is the "camera gets stuck behind the stage" report.
+     *
+     * Anchored fully in the stage frame (factor 1) the camera rotates exactly
+     * with the floor, so the tilt becomes invisible and the whole read is lost.
+     *
+     * Partway keeps the floor clear while leaving plenty of visible tilt. The
+     * camera's UP stays world-up regardless, so the horizon never rolls. */
     const want = this._camWant || (this._camWant = new THREE.Vector3());
-    want.set(
-      this._ballWorld.x - Math.sin(this.camYaw) * dist,
-      this._ballWorld.y + hgt,
-      this._ballWorld.z - Math.cos(this.camYaw) * dist,
-    );
+    const off = this._camOff || (this._camOff = new THREE.Vector3());
+    const fr = this._camFrame || (this._camFrame = new THREE.Euler());
+    fr.set(sim.tilt.x * CAM_TILT_FOLLOW, 0, sim.tilt.z * CAM_TILT_FOLLOW);
+    off.set(-Math.sin(this.camYaw) * dist, hgt, -Math.cos(this.camYaw) * dist);
+    off.applyEuler(fr);
+    want.copy(this._ballWorld).add(off);
     const k = Math.min(1, 6.0 * dt);
     this.camera.position.lerp(want, k);
+
+    // --- do not let the stage get between the camera and the ball.
+    // Cast from just above the ball out to where the camera wants to sit; if
+    // anything solid is in the way, ride in front of it.
+    if (this.solids.length) {
+      const from = this._rayFrom || (this._rayFrom = new THREE.Vector3());
+      const dir = this._rayDir || (this._rayDir = new THREE.Vector3());
+      from.copy(this._ballWorld); from.y += 0.6;
+      dir.copy(this.camera.position).sub(from);
+      const want2 = dir.length();
+      if (want2 > 0.01) {
+        dir.divideScalar(want2);
+        this._ray.set(from, dir);
+        this._ray.far = want2;
+        const hits = this._ray.intersectObjects(this.solids, false);
+        if (hits.length) {
+          const d = Math.max(1.6, hits[0].distance - 0.55);
+          this.camera.position.copy(from).addScaledVector(dir, d);
+        }
+      }
+    }
 
     this.camLook.lerp(
       (this._lookWant || (this._lookWant = new THREE.Vector3())).set(
         this._ballWorld.x + vw.x * 0.16,
-        this._ballWorld.y + 1.1,
+        this._ballWorld.y + 1.2,
         this._ballWorld.z + vw.z * 0.16,
       ),
       Math.min(1, 8 * dt),
@@ -414,8 +715,27 @@ export class View {
       this.shake *= Math.pow(0.02, dt);
     } else this.shake = 0;
 
+    // The sea, ridges and haze ride with the camera horizontally so they never
+    // run out; their height is fixed, so they still read as far below.
+    this.far.position.x = this.camera.position.x;
+    this.far.position.z = this.camera.position.z;
+    if (this.haze) {
+      for (let i = 0; i < this.haze.length; i++) {
+        this.haze[i].rotation.y += dt * (0.004 + i * 0.0022);
+      }
+    }
+
     this.updateSnow(dt);
     if (this.goalGroup) this.goalGroup.rotation.y += dt * 0.35;
+
+    // A gate that refuses you should say so in the world, not only the HUD.
+    if (this.lintels.length) {
+      const lit = sim.gateBlock ? 0.55 + 0.35 * Math.sin(sim.time * 9) : 0;
+      for (const l of this.lintels) {
+        l.material.emissive.setHex(0xd4603a);
+        l.material.emissiveIntensity += (lit - l.material.emissiveIntensity) * Math.min(1, 12 * dt);
+      }
+    }
   }
 
   updateSnow(dt) {
@@ -424,11 +744,16 @@ export class View {
     const p = this.snow.geometry.attributes.position;
     const a = p.array;
     const c = this.camera.position;
-    const fall = 3.2 * dt, drift = 0.9 * dt;
+    // Polar wind: snow is driven sideways far more than it falls, and gusts
+    // rather than streaming evenly. Straight-down snow reads as a screensaver.
+    this._gust = (this._gust || 0) + dt;
+    const gust = 1 + 0.55 * Math.sin(this._gust * 0.37) + 0.25 * Math.sin(this._gust * 1.13);
+    const fall = 3.0 * dt, drift = 7.5 * gust * dt, sway = 1.6 * gust * dt;
     for (let i = 0; i < this.snowN; i++) {
       const j = i * 3;
       a[j + 1] -= fall;
       a[j] += drift;
+      a[j + 2] += sway * Math.sin(a[j + 1] * 0.35 + i);
       if (a[j + 1] < c.y - 30) a[j + 1] = c.y + 40;
       if (a[j] - c.x > 75) a[j] -= 150; else if (a[j] - c.x < -75) a[j] += 150;
       if (a[j + 2] - c.z > 75) a[j + 2] -= 150; else if (a[j + 2] - c.z < -75) a[j + 2] += 150;
@@ -438,8 +763,11 @@ export class View {
 
   /** Drop the camera straight onto the ball, for stage start and restarts. */
   snapCamera(sim) {
-    this.stageGroup.rotation.set(sim.tilt.x, 0, sim.tilt.z);
-    this.ballGroup.position.set(sim.ball.p.x, sim.ball.p.y, sim.ball.p.z);
+    const b = sim.ball;
+    this.stageRoot.rotation.set(sim.tilt.x, 0, sim.tilt.z);
+    this.stageRoot.position.set(b.p.x, b.p.y, b.p.z);
+    this.stageInner.position.set(-b.p.x, -b.p.y, -b.p.z);
+    this.ballGroup.position.set(b.p.x, b.p.y, b.p.z);
     this.ballGroup.getWorldPosition(this._ballWorld);
     this.camYaw = 0;
     this.camera.position.set(

@@ -120,6 +120,46 @@ t('the shell only ever shrinks, so the ball can never grow into geometry', () =>
   }
 });
 
+console.log('\nsliding, not sticking');
+t('a ball pressed into a wall keeps most of its along-wall speed', () => {
+  // NOTE: this does NOT reproduce the original "sticks to walls" report -- it
+  // passes against the pre-fix solver too, which is how we learned the
+  // double-impulse theory was wrong. It is kept because the property is worth
+  // locking down regardless: leaning on a wall must cost speed, not all of it.
+  const walled = {
+    id: 'w', name: 'w', warmth: 0, killY: -20, heat: [],
+    spawn: [0, 1.2, 0], goal: [0, 0.6, 9999], goalR: 1,
+    boxes: [
+      { p: [0, -0.5, 0], s: [20, 1, 600], kind: 'stone' },
+      { p: [5.5, 1.0, 0], s: [1, 3, 600], kind: 'stone' },   // wall at x = +5
+    ],
+  };
+  const sim = S.createSim(walled, { seed: 8 });
+  sim.ball.p = { x: 4.0, y: S.T.R_MAX, z: 0 };
+  sim.ball.v = { x: 0, y: 0, z: 12 };
+  // hold a tilt that drives it forward AND hard into the wall
+  for (let i = 0; i < 480; i++) sim.step(1 / 240, { x: 0.7, z: -1 });
+  ok(sim.ball.p.x > 4.3, `should be pinned against the wall, x=${sim.ball.p.x.toFixed(2)}`);
+  ok(sim.ball.v.z > 8, `should still be running along the wall, vz=${sim.ball.v.z.toFixed(2)}`);
+  ok(sim.ball.p.z > 20, `should have travelled along it, z=${sim.ball.p.z.toFixed(1)}`);
+});
+t('a corner does not eat all the speed', () => {
+  const boxed = {
+    id: 'c', name: 'c', warmth: 0, killY: -20, heat: [],
+    spawn: [0, 1.2, 0], goal: [0, 0.6, 9999], goalR: 1,
+    boxes: [
+      { p: [0, -0.5, 0], s: [20, 1, 600], kind: 'stone' },
+      { p: [5.5, 1.0, 0], s: [1, 3, 600], kind: 'stone' },
+      { p: [0, 1.0, -5.5], s: [20, 3, 1], kind: 'stone' },   // back wall too
+    ],
+  };
+  const sim = S.createSim(boxed, { seed: 8 });
+  sim.ball.p = { x: 4.6, y: S.T.R_MAX, z: -4.6 };            // wedged in the corner
+  sim.ball.v = { x: 0, y: 0, z: 0 };
+  for (let i = 0; i < 480; i++) sim.step(1 / 240, { x: 1, z: 0 });   // tilt out of it
+  ok(sim.ball.p.z > 4, `should have driven out of the corner, z=${sim.ball.p.z.toFixed(2)}`);
+});
+
 console.log('\nthe sleeper');
 t('agitation grows as the shell thins', () => {
   const wob = (shell) => {

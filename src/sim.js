@@ -12,19 +12,28 @@
 // ---------------------------------------------------------------- tuning
 
 export const T = {
-  G: 22,                // gravity, m/s^2 (exaggerated; Monkey Ball is snappy)
-  TILT_MAX: 0.42,       // ~24 deg. Absolute stick->angle mapping, never a rate.
-  TILT_RATE: 2.6,       // rad/s the stage can swing toward the target angle
+  G: 26,                // gravity, m/s^2 (exaggerated; Monkey Ball is snappy)
+  TILT_MAX: 0.46,       // ~26 deg. Absolute stick->angle mapping, never a rate.
+  TILT_RATE: 5.0,       // rad/s the stage can swing toward the target angle.
+                        // Fast enough that the stage arrives at the angle you
+                        // asked for in ~90ms; slower reads as input lag.
 
   R_MAX: 0.55,          // radius at shell 1.0
   R_MIN: 0.22,          // radius at shell 0.0
 
   ROLL_INERTIA: 5 / 7,  // solid sphere rolling without slipping: a = 5/7 g sin
-  RESTITUTION: 0.16,
-  ROLL_DRAG: 0.34,      // rolling resistance, 1/s, grounded only.
-                        // Terminal on a max slope ~= 5/7 g sin(TILT_MAX)/ROLL_DRAG ~= 19 m/s.
+  RESTITUTION: 0.16,    // floors
+  WALL_RESTITUTION: 0.0,// walls: stop, do not spring back at the player
+
+  /* Rolling resistance, 1/s, grounded only. This number decides whether the
+   * game is piloted or merely watched. At 0.34 the decay constant is ~3s, so
+   * the ball coasts to a halt on its own and braking is never a decision. At
+   * 0.10 it is ~10s: momentum persists, you have to tilt AGAINST travel to
+   * shed speed, and every corner has to be set up in advance. Speed is then
+   * bounded by V_MAX rather than by drag. */
+  ROLL_DRAG: 0.10,
   AIR_DRAG: 0.02,
-  V_MAX: 27,
+  V_MAX: 24,
 
   // Melt. Deliberately independent of shell -- see MELT INVARIANT below.
   FRICTION_MELT: 0.00042,   // shell/s per m/s of contact speed
@@ -184,6 +193,7 @@ export function createSim(stageDef, opts = {}) {
     },
     meltLast: 0,
     ambientLast: 0,
+    gateBlock: 0,   // opening height of a gate refusing us this frame, else 0
     events: [],
     step,
     reset,
@@ -339,13 +349,41 @@ export function createSim(stageDef, opts = {}) {
     return pen;
   }
 
-  /** Sphere vs every box, a few relaxation passes. */
+  // Deduped contact normals for this frame. Flat array, never reallocated.
+  const _cn = new Float64Array(3 * 8);
+  let _cnCount = 0;
+
+  /** Record a normal unless one pointing essentially the same way is present. */
+  function addContact(nx, ny, nz) {
+    for (let i = 0; i < _cnCount; i++) {
+      const j = i * 3;
+      if (_cn[j] * nx + _cn[j + 1] * ny + _cn[j + 2] * nz > 0.97) return;
+    }
+    if (_cnCount >= 8) return;
+    const j = _cnCount * 3;
+    _cn[j] = nx; _cn[j + 1] = ny; _cn[j + 2] = nz;
+    _cnCount++;
+  }
+
+  /**
+   * Sphere vs every box.
+   *
+   * Position and velocity are resolved SEPARATELY, and this matters. Applying
+   * the velocity impulse inside the relaxation loop means a ball touching two
+   * surfaces -- or one surface it gets pushed back into by another -- has its
+   * normal velocity cancelled two or three times per frame. Against a wall that
+   * bleeds away the tangential speed as well, and the ball sticks instead of
+   * sliding along. So: iterate position to separate, collect the distinct
+   * normals, then apply exactly one impulse per normal.
+   */
   function resolve() {
     const b = sim.ball;
     b.grounded = false;
-    let best = 0;
+    _cnCount = 0;
+    sim.gateBlock = 0;
 
-    for (let pass = 0; pass < 3; pass++) {
+    // --- position only
+    for (let pass = 0; pass < 4; pass++) {
       let hit = false;
       for (const bx of stage.boxes) {
         // A grate is bars, not a slab: it only exists for a ball too fat to
@@ -356,26 +394,35 @@ export function createSim(stageDef, opts = {}) {
         if (pen < 0) continue;
 
         const nx = _n[0], ny = _n[1], nz = _n[2];
+        // Touching a lintel means only one thing: too thick to pass.
+        if (bx.open !== undefined) sim.gateBlock = bx.open;
         b.p.x += nx * pen; b.p.y += ny * pen; b.p.z += nz * pen;
-
-        const vn = b.v.x * nx + b.v.y * ny + b.v.z * nz;
-        if (vn < 0) {
-          const imp = -vn;
-          if (imp > best) {
-            best = imp;
-            b.lastImpact = imp;
-            if (imp > 1.6) b.startle = Math.min(T.STARTLE, b.startle + imp * 0.25);
-          }
-          const e = T.RESTITUTION;
-          b.v.x -= (1 + e) * vn * nx;
-          b.v.y -= (1 + e) * vn * ny;
-          b.v.z -= (1 + e) * vn * nz;
-        }
-
+        addContact(nx, ny, nz);
         if (ny > 0.5) { b.grounded = true; b.n = { x: nx, y: ny, z: nz }; }
         hit = true;
       }
       if (!hit) break;
+    }
+
+    // --- velocity, once per distinct normal
+    let best = 0;
+    for (let i = 0; i < _cnCount; i++) {
+      const j = i * 3;
+      const nx = _cn[j], ny = _cn[j + 1], nz = _cn[j + 2];
+      const vn = b.v.x * nx + b.v.y * ny + b.v.z * nz;
+      if (vn >= 0) continue;
+      const imp = -vn;
+      if (imp > best) {
+        best = imp;
+        b.lastImpact = imp;
+        if (imp > 1.6) b.startle = Math.min(T.STARTLE, b.startle + imp * 0.25);
+      }
+      // Bounce off a floor, but merely stop against a wall -- a springy wall in
+      // a tilt game reads as the stage spitting you back at yourself.
+      const e = ny > 0.5 ? T.RESTITUTION : T.WALL_RESTITUTION;
+      b.v.x -= (1 + e) * vn * nx;
+      b.v.y -= (1 + e) * vn * ny;
+      b.v.z -= (1 + e) * vn * nz;
     }
 
     if (best > 0) {

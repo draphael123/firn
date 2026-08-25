@@ -125,14 +125,16 @@ function startAttract() {
  * one throw anywhere in stage setup left the screen black with the menu still
  * up and nothing in the console. State changes are synchronous now; this only
  * paints. It also makes restart genuinely instant, which the stage needs. */
+let flashTimer = 0;
 function flash() {
   const f = $('fade');
-  f.style.transition = 'none';
+  f.classList.remove('on');
+  void f.offsetWidth;          // restart the keyframe animation
   f.classList.add('on');
-  requestAnimationFrame(() => {
-    f.style.transition = '';
-    f.classList.remove('on');
-  });
+  // Belt and braces: the classless state is opacity 0, so stripping the class
+  // guarantees a clear even if the animation itself was throttled part-way.
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => f.classList.remove('on'), 600);
 }
 
 // ---------------------------------------------------------------- HUD
@@ -153,7 +155,12 @@ function updateHud() {
 
   const w = $('warn');
   let msg = '';
-  if (shell <= 0) msg = 'bare · one blow';
+  if (sim.gateBlock) {
+    // The single most confusing moment in the game: you are stopped by a gate
+    // and nothing says why. Name the rule and the number.
+    const need = Math.round(shellForOpening(sim.gateBlock) * 100);
+    msg = `too thick for this gate · melt below ${need}%`;
+  } else if (shell <= 0) msg = 'bare · one blow';
   else if (shell < GRATE_SHELL + 0.05) msg = 'the floor will not hold you';
   else if (m > 0.05) msg = 'too hot';
   w.textContent = msg;
