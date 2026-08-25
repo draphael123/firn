@@ -95,6 +95,19 @@ export class Audio {
     this.bed.gain.value = s.volMusic / 10;
   }
 
+  /**
+   * Silence the continuous voices. update() drives the rolling rumble and the
+   * melt hiss every frame, so the moment the game stops calling it -- a pause,
+   * a result screen -- both gains simply HOLD wherever they were. Pause at speed
+   * and the roll noise sits there at full volume as a wall of static.
+   */
+  hush() {
+    if (!this.started) return;
+    const t = this.ctx.currentTime;
+    this.rollGain.gain.setTargetAtTime(0, t, 0.05);
+    this.hissGain.gain.setTargetAtTime(0, t, 0.05);
+  }
+
   /** Fade the bed in for play, out for menus. */
   setBed(on) {
     if (!this.started) return;
@@ -193,7 +206,7 @@ export class Audio {
  * so booting costs only the title track.
  */
 const TRACKS = {
-  title: 'music/title.mp3',   // "Lightless Dawn"
+  title: 'music/title.mp3',   // "Skye Cuillin"
   cold:  'music/cold.mp3',    // "Ice Flow"
   vault: 'music/vault.mp3',   // "Frozen Star"
   ember: 'music/ember.mp3',   // "Impact Lento"

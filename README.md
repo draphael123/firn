@@ -148,7 +148,7 @@ speed rush and the scripted camera together.
 
 Music by **Kevin MacLeod** ([incompetech.com](https://incompetech.com)), licensed
 under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/):
-"Lightless Dawn" (title), "Ice Flow" (the cold worlds), "Frozen Star" (the
+"Skye Cuillin" (title), "Ice Flow" (the cold worlds), "Frozen Star" (the
 Cathedral), "Impact Lento" (the Geothermal Field).
 
 Everything else is synthesised in WebAudio at runtime. Vanilla ES modules, three.js

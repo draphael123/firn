@@ -581,5 +581,37 @@ const s6 = {
   heat: [heat(0, 8, 52, 9, 0.19), heat(-30, 8, 88, 10, 0.03), heat(0, 13, 172, 11, 0.05)],
 };
 
+/* ============================================================ TITLE SCENE
+ *
+ * The menu is not laid over a level playing itself -- it is laid over the PLACE
+ * YOU ARE CLIMBING TO. A shrine on the summit snowfield, the ring standing in
+ * the middle of it, and the ice going slowly round the rim: the whole game's
+ * proposition in one picture before a word of it is explained.
+ *
+ * Never entered from the route, so it is deliberately not in STAGES.
+ */
+export const TITLE_SCENE = {
+  id: 'shrine',
+  name: 'The Shrine',
+  numeral: '',
+  world: 'neve',
+  altitude: 2610,
+  warmth: 0.0, warmFall: 0,
+  killY: -60,
+  spawn: [0, 1.0, -9],
+  goal: [0, 0.2, 0],
+  goalR: 2.0,
+  waypoints: [[0, 0, -9]],
+  boxes: [
+    plate(-15, 15, -15, 15, 0),
+    // an octagon of kerb around the rim, so the props pass gives it capstones,
+    // handline and cairns for free
+    railZ(-15.35, -15, 15, 0), railZ(15.35, -15, 15, 0),
+    railX(-15.35, -15, 15, 0), railX(15.35, -15, 15, 0),
+    ...arc(0, 0, 21, 0, Math.PI * 2, 7, -1.4, { rails: false }),
+  ].flat(),
+  heat: [],
+};
+
 export const STAGES = [s0, s1, s2, s3, s4, s5, s6];
 export const stageById = (id) => STAGES.find((s) => s.id === id) || STAGES[0];

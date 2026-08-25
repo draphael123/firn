@@ -6,7 +6,7 @@
  */
 
 import * as SIM from './sim.js';
-import { STAGES, shellForOpening, GATE_OPEN, GRATE_GAP } from './stages.js';
+import { STAGES, TITLE_SCENE, shellForOpening, GATE_OPEN, GRATE_GAP } from './stages.js';
 import { autopilot } from './autopilot.js';
 import { View } from './render.js';
 import { Audio, Music, TRACK_FOR_WORLD } from './audio.js';
@@ -96,7 +96,7 @@ function restart() {
 function quitToTitle() {
   mode = 'attract';
   audio.setBed(false);
-  music.play('title');
+  audio.hush();
   startAttract();
   ui.stack.length = 0;
   ui.show('scr-title', false);
@@ -110,6 +110,7 @@ function finish() {
   if (won) isBest = store.record(stage.id, sim.time, sim.ball.shell);
   mode = 'over';
   audio.setBed(false);
+  audio.hush();
   if (won) {
     audio.win(); view.goalBurst(); burstFlash(); view.shot('arrival');
   } else {
@@ -124,12 +125,22 @@ function finish() {
   });
 }
 
+/* The title screen is its own place: the shrine on the summit, which is what
+ * the whole climb is FOR. The ice circles the rim under a slow lazy input --
+ * a menu laid over a level playing itself never looks like a title screen, it
+ * looks like a level playing itself. */
 function startAttract() {
-  const stage = STAGES[0];
-  sim = SIM.createSim(stage, { seed: 4242 });
-  attractPilot = autopilot(stage.waypoints, { cruise: 8.5 });
+  sim = SIM.createSim(TITLE_SCENE, { seed: 4242 });
+  attractPilot = null;
   view.loadStage(sim.stage);
   view.snapCamera(sim);
+  view.shot('title');
+  music.play('title');
+}
+
+/** A slow circling lean, so the ice orbits the ring rather than sitting still. */
+function attractInput(t) {
+  return { x: Math.sin(t * 0.34) * 0.30, z: Math.cos(t * 0.34) * 0.30 };
 }
 
 /** The held beat: name the stage, then let go. Any key skips it. */
@@ -269,10 +280,10 @@ export function step(dt) {
     updateHud();
     if (sim.state !== 'run') finish();
   } else if (mode === 'attract') {
-    sim.step(dt, attractPilot(sim));
+    sim.step(dt, attractInput(sim.time));
     sim.events.length = 0;
     view.update(sim, dt);
-    if (sim.state !== 'run') startAttract();
+    if (sim.state !== 'run') sim.reset();
   } else {
     // paused / menus: keep the world alive but frozen
     view.update(sim, 0);
@@ -338,7 +349,7 @@ export function boot() {
     if (mode === 'ready') { release(); e.preventDefault(); return; }
 
     if (k === 'escape' && mode === 'play') {
-      mode = 'paused'; audio.setBed(false); ui.showPause(STAGES[stageIndex]);
+      mode = 'paused'; audio.setBed(false); audio.hush(); ui.showPause(STAGES[stageIndex]);
       e.preventDefault(); return;
     }
     if (k === 'r' && mode === 'play') { restart(); e.preventDefault(); return; }
@@ -356,7 +367,6 @@ export function boot() {
 
   resize();
   startAttract();
-  music.play('title');
   ui.show('scr-title', false);
 
   last = performance.now();

@@ -46,9 +46,10 @@ export class Director {
     this.introFrom = new THREE.Vector3();
   }
 
-  /** @param mode follow | intro | arrival | fall | wake */
+  /** @param mode follow | intro | arrival | fall | wake | title */
   set(mode, dur = 0, view = null) {
-    if (!this.settings.cinematic && mode !== 'follow') return;
+    // the title orbit is the screen itself, not an effect -- it always runs
+    if (!this.settings.cinematic && mode !== 'follow' && mode !== 'title') return;
     this.mode = mode;
     this.t = 0;
     this.dur = dur;
@@ -93,6 +94,15 @@ export class Director {
     const cam = this.camera;
     const b = sim.ball;
 
+    /* Derive the ball's world position HERE rather than trusting the caller to
+     * have done it. It used to be computed inside the view's inline camera
+     * block; when that block was replaced by this director the line went with
+     * it, and every shot silently kept framing the ball's SPAWN for the whole
+     * run -- the camera sat at the start line while you drove away from it.
+     * Nothing that reads a value every frame should depend on someone else
+     * remembering to refresh it. */
+    view.ballGroup.getWorldPosition(view._ballWorld);
+
     // yaw trails the direction of travel, heavily lagged
     _tmp.set(b.v.x, 0, b.v.z).applyEuler(view.stageRoot.rotation);
     const speed = Math.hypot(_tmp.x, _tmp.z);
@@ -114,6 +124,12 @@ export class Director {
       _want.lerpVectors(this.introFrom, _want, k);
       _look.lerp(view._ballWorld, 0.35 + k * 0.65);
       cam.position.copy(_want);
+
+    } else if (this.mode === 'title') {
+      // A slow, patient orbit of the shrine. Nothing here is in a hurry.
+      const a = this.t * 0.085;
+      cam.position.set(Math.sin(a) * 30, 11 + Math.sin(this.t * 0.13) * 2.2, Math.cos(a) * 30);
+      _look.set(0, 2.6, 0);
 
     } else if (this.mode === 'arrival') {
       // A slow orbit of the goal, rising. The ice is set down; look at it.
@@ -187,6 +203,7 @@ export class Director {
 
   /** Drop straight onto the ball, for stage start and restarts. */
   snap(view, sim) {
+    view.ballGroup.getWorldPosition(view._ballWorld);   // same reason as update()
     this.yaw = 0;
     this.punch = 0;
     this.shake = 0;
