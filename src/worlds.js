@@ -321,10 +321,17 @@ function bank(geo, mat, max) {
   return m;
 }
 
-/** Builds the level, distant ground for a world. Returns a Group. */
-export function buildGround(world) {
+/**
+ * Builds the level, distant ground for a world. Returns a Group.
+ *
+ * `key` is a per-STAGE seed. Without it this was seeded off the world id alone,
+ * which was invisible while six worlds each had one stage -- and became the
+ * single biggest reason the game looked repetitive the moment every stage was
+ * moved into the same world, because all ten then had a pixel-identical horizon.
+ */
+export function buildGround(world, key = 0) {
   const g = new THREE.Group();
-  const rnd = mulberry32(world.id.length * 991 + 17);
+  const rnd = mulberry32(world.id.length * 991 + 17 + key * 7919);
 
   const plate = (mat) => {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400), mat);
@@ -468,10 +475,16 @@ export function buildGround(world) {
  *
  * Everything here is instanced and never collides: it is strictly backdrop.
  */
-export function buildBackdrop(world, detail = 1) {
+export function buildBackdrop(world, detail = 1, key = 0, altitude = 0) {
   const g = new THREE.Group();
   if (world.ground === 'cavern') return g;      // enclosed: there is no distance
-  const rnd = mulberry32(world.id.length * 7717 + 43);
+  const rnd = mulberry32(world.id.length * 7717 + 43 + key * 6151);
+  /* How far up the mountain this stage sits, 0 at the road's foot and 1 at the
+   * summit. The backdrop answers to it rather than merely being reshuffled: you
+   * climb past the other causeways, and the peaks stop towering over you and
+   * start standing below. Variety that MEANS something beats variety that is
+   * just a different seed. */
+  const high = Math.max(0, Math.min(1, altitude / 4500));
   const q = [0.45, 1.0, 1.6][detail] ?? 1.0;
   /* Nothing may stand inside this. A stage runs to roughly 270 long and the
    * camera sits behind and above the ball, so anything nearer than this is not
@@ -503,7 +516,7 @@ export function buildBackdrop(world, detail = 1) {
     const cx = Math.cos(bear) * dist, cz = Math.sin(bear) * dist;
     const run = rnd() * Math.PI * 2;                  // the way the road heads
     const dx = Math.cos(run), dz = Math.sin(run);
-    const y = GROUND_Y + 30 + rnd() * 120;
+    const y = GROUND_Y + (26 + rnd() * 116) * (1 - high * 0.62);
     const w = 7 + rnd() * 9;
     const segs = 12 + Math.floor(rnd() * 12);
     const segLen = 16 + rnd() * 14;
@@ -531,8 +544,8 @@ export function buildBackdrop(world, detail = 1) {
   const spires = bank(SPIRE, stoneMat, nSpire + 4);
   for (let i = 0; i < nSpire; i++) {
     const a = rnd() * Math.PI * 2, r = KEEP_OUT + rnd() * 640;
-    const tall = rnd() < 0.22;
-    const h = tall ? 60 + rnd() * 130 : 12 + rnd() * 40;
+    const tall = rnd() < 0.22 - high * 0.14;          // fewer things overtop you up high
+    const h = (tall ? 60 + rnd() * 130 : 12 + rnd() * 40) * (1 - high * 0.42);
     const w = h * (tall ? 0.10 + rnd() * 0.10 : 0.28 + rnd() * 0.4);
     spires.put(Math.cos(a) * r, GROUND_Y + h / 2, Math.sin(a) * r, w, h, w,
       (rnd() - 0.5) * 0.16, rnd() * 3, (rnd() - 0.5) * 0.16);
@@ -548,7 +561,7 @@ export function buildBackdrop(world, detail = 1) {
     const cx = Math.cos(a) * r, cz = Math.sin(a) * r;
     const n = 1 + Math.floor(rnd() * 3);
     for (let k = 0; k < n; k++) {
-      const h = 16 + rnd() * 46;
+      const h = (16 + rnd() * 46) * (1 - high * 0.35);
       monos.put(cx + (rnd() - 0.5) * 26, GROUND_Y + h / 2, cz + (rnd() - 0.5) * 26,
         2.5 + rnd() * 4, h, 2.5 + rnd() * 4, (rnd() - 0.5) * 0.10, rnd() * 3, (rnd() - 0.5) * 0.10);
     }

@@ -295,12 +295,17 @@ export class View {
     }
     this.haze.length = 0;
 
-    this.far.add(buildGround(W));
-    this.far.add(buildBackdrop(W, this.settings.detail ?? 1));
+    // a per-stage seed, so ten stages in one world do not share one horizon
+    let key = 0;
+    for (let i = 0; i < stage.id.length; i++) key = (key * 31 + stage.id.charCodeAt(i)) | 0;
+    key = Math.abs(key) % 100000;
+    this.far.add(buildGround(W, key));
+    this.far.add(buildBackdrop(W, this.settings.detail ?? 1, key, stage.altitude || 0));
     if (W.ridges) {
       let k = 0;
       for (const [radius, height, base, peak] of W.ridges) {
-        this.far.add(ridgeRing(radius, height, GROUND_Y, 120, mulberry32(11 + k * 29), base, peak));
+        this.far.add(ridgeRing(radius, height, GROUND_Y, 120,
+          mulberry32(11 + k * 29 + key * 131), base, peak));
         k++;
       }
     }

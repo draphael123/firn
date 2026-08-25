@@ -106,10 +106,28 @@ for (const st of STAGES) {
         alt.ev.gateShell === null || alt.ev.gateShell > GATE_SHELL,
         alt.ev.gateShell === null ? 'never crossed it' : `${pct(alt.ev.gateShell)} > ${pct(GATE_SHELL)}`);
     }
-    // The true margin is NOT measurable here: the pilot crawls while it melts
-    // where a human dives the hot spot and leaves. Only assert neither is a trap.
-    check('neither route strictly dominates', Math.abs(main.time - alt.time) < 12,
-      `${main.time.toFixed(1)}s vs ${alt.time.toFixed(1)}s -- true margin needs playtest`);
+    /* Does one route beat the other on BOTH axes?
+     *
+     * The old form of this only compared times within 12 seconds, which passed
+     * for anything and so proved nothing. What actually breaks a gate as a
+     * DECISION is one line winning on time AND on shell at once -- then there is
+     * nothing to weigh and the gate is just a wall you can walk around.
+     *
+     * The tutorial is exempt and says so: there the gate is the LESSON, taken
+     * slowly and deliberately, and the way round is the safety valve for anyone
+     * who cannot make it fit yet. Everywhere else the gate has to earn its keep.
+     *
+     * The true margin still is not measurable here -- the pilot crawls while it
+     * melts where a person dives the hot spot and leaves -- so this asserts the
+     * SHAPE of the trade, not its size. */
+    const fasterMain = main.time < alt.time;
+    const thickerMain = main.shell > alt.shell;
+    const dominates = fasterMain === thickerMain;   // same line wins both -> no trade
+    check(st.tutorial ? 'gate vs detour (tutorial: gate is the lesson, not the line)'
+                      : 'neither route wins on BOTH time and shell',
+      st.tutorial ? true : !dominates,
+      `${main.time.toFixed(1)}s / ${pct(main.shell)} via the gate`
+      + `  vs  ${alt.time.toFixed(1)}s / ${pct(alt.shell)} round`);
   }
 }
 

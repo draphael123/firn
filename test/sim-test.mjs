@@ -276,9 +276,18 @@ t('every stage has spawn support, a goal and waypoints', () => {
     ok(under, `${st.id} spawns over empty space`);
   }
 });
-t('stage warmth rises along the descent', () => {
-  ok(STAGES[0].warmth < STAGES[1].warmth && STAGES[1].warmth < STAGES[2].warmth,
-     'the route descends into warmth, so ambient melt must climb stage to stage');
+t('stage warmth and altitude both climb, all the way up', () => {
+  /* This used to check the first THREE stages and stop, which is why the boss
+   * stage sat at a lower warmth and a lower altitude than the one before it for
+   * as long as it existed. The whole premise is that the thaw rises behind you
+   * faster than you climb, so the chain has to hold end to end or the
+   * difficulty ramp stops being geographic. */
+  for (let i = 1; i < STAGES.length; i++) {
+    ok(STAGES[i].warmth > STAGES[i - 1].warmth,
+      `${STAGES[i].id} warmth ${STAGES[i].warmth} must exceed ${STAGES[i - 1].id} ${STAGES[i - 1].warmth}`);
+    ok(STAGES[i].altitude > STAGES[i - 1].altitude,
+      `${STAGES[i].id} altitude ${STAGES[i].altitude} must exceed ${STAGES[i - 1].id} ${STAGES[i - 1].altitude}`);
+  }
 });
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

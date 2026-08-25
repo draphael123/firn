@@ -301,6 +301,13 @@ const s0 = {
   goalR: 2.6,
   waypoints: [[0, 0, 8], [0, 0, 26], [10, 0, 40], [20, 0, 52], [20, 0, 70],
               [20, 4, 88], [20, 6, 108], [20, 6, 118], [20, 6, 128], [6, 8, 142], [10, 8, 154]],
+  /* The way round the gate. The stone for it was always there, but with no
+   * altRoute declared nothing ever verified it -- so the tutorial's one gate was
+   * a hard block as far as any test knew, which is exactly the shape of a gate
+   * that only refuses. Declared, it is checked like every other detour. */
+  altRoute: [[0, 0, 8], [0, 0, 26], [10, 0, 40], [20, 0, 52], [20, 0, 70],
+             [20, 4, 88], [20, 6, 106], [4, 6, 110], [-1, 6, 118], [-1, 6, 128],
+             [4, 6, 134], [6, 8, 142], [10, 8, 154]],
   teach: [
     { z: -8,  text: 'Hold a direction. You do not steer the ice — you tilt the world under it.' },
     { z: 18,  text: 'Let go and the ground levels. To slow down, tilt back against the way you are going.' },
@@ -338,8 +345,13 @@ const s0 = {
     // room 5: the gate, with a way around it for anyone who wants one
     ...gate(122, 14, 26, 17, 23, 6),
     plate(17, 23, 122, 132, 6),
-    plate(-4, 17, 106, 122, 6),
-    plate(-4, 17, 122, 132, 6),
+    /* The bypass climbs and drops again. Without it the long way round was
+     * both FASTER and left you thicker, which taught the tutorial's one lesson
+     * backwards: the gate is supposed to be the shortcut you pay shell for. */
+    plate(-4, 17, 106, 112, 6),
+    ...ramp(-4, 17, 112, 120, 6, 7.6, { rails: false }),
+    plate(-4, 17, 120, 126, 7.6),
+    ...ramp(-4, 17, 126, 132, 7.6, 6, { rails: false }),
     railZ(-4.35, 106, 146, 6, 2.0), railX(105.65, -4, 14, 6, 2.0),
 
     ...ramp(-4, 23, 132, 146, 6, 8),
@@ -773,6 +785,204 @@ const s6 = {
  * Never entered from the route, so it is deliberately not in STAGES.
  */
 
+/* ========================================================= VII. THE BROKEN SPAN
+ *
+ * One idea: the road is not continuous any more, and a kicker is the only way
+ * across. There is no jump button and there should not be one -- a slope turns
+ * speed into height, which makes every gap a question about the speed you
+ * arrived with rather than about timing a press. You also cannot steer in the
+ * air, so each launch commits you to whatever line you were on.
+ */
+const s7 = {
+  id: 'span',
+  par: { time: 44, shell: 0.46 },
+  name: 'The Broken Span',
+  numeral: 'VII',
+  world: 'neve',
+  altitude: 3060,
+  epigraph: 'The bearers before you mended this road until they could not. Then they jumped.',
+  warmth: 0.0122, warmFall: 28,
+  killY: -26,
+  spawn: [0, 1.4, -14],
+  goal: [0, 8.4, 256],
+  goalR: 2.8,
+  waypoints: [[0, 0, 6], [0, 0, 26], [0, 3, 50], [0, 3, 80], [0, 3, 92],
+              [10, 3, 102], [20, 3, 112], [20, 3, 152], [20, 7, 180],
+              [20, 7, 214], [10, 7, 236], [0, 7, 246], [0, 7, 256]],
+  teach: [
+    { z: 40, text: 'The span is broken ahead. The slope is your jump - carry speed into it.' },
+    { z: 130, text: 'You cannot steer once you leave the deck. Aim before you go.' },
+  ],
+  boxes: [
+    plate(-6, 6, -16, 26, 0),
+    railZ(-6.35, -16, 26, 0, 2.0), railZ(6.35, -16, 26, 0, 2.0), railX(-16.35, -6, 6, 0, 2.0),
+
+    ...ramp(-6, 6, 26, 46, 0, 3),
+    plate(-6, 6, 46, 63, 3),
+    railZ(-6.35, 46, 63, 3), railZ(6.35, 46, 63, 3),
+    ...kicker(-6, 6, 58, 63, 3, 1.5),
+    // ---- gap 63 -> 66.6
+    plate(-6, 6, 66.6, 92, 3),
+    railZ(-6.35, 66.6, 92, 3), railZ(6.35, 66.6, 92, 3),
+
+    ...chicane(0, 92, 10, 12, 3, 1),
+    plate(14, 26, 112, 131, 3),
+    railZ(13.65, 112, 131, 3), railZ(26.35, 112, 131, 3),
+    ...kicker(14, 26, 126, 131, 3, 1.6),
+    /* gap 131 -> 135. Landing zones are kept CLEAR: the first draft put fallen
+     * masonry at z=148, thirteen metres past a blind landing, and a pilot that
+     * touched down with any lateral speed at all was into it before it could
+     * correct. You cannot steer in the air, so you cannot be asked to land on a
+     * mark. */
+    plate(14, 26, 135, 158, 3),
+    railZ(13.65, 135, 158, 3), railZ(26.35, 135, 158, 3),
+
+    ...ramp(14, 26, 158, 180, 3, 7),
+    plate(14, 26, 180, 199, 7),
+    railZ(13.65, 180, 199, 7), railZ(26.35, 180, 199, 7),
+    ...kicker(14, 26, 194, 199, 7, 1.5),
+    // ---- gap 199 -> 202.8
+    plate(14, 26, 202.8, 226, 7),
+    railZ(13.65, 202.8, 226, 7), railZ(26.35, 202.8, 226, 7),
+
+    ...chicane(20, 226, 10, 12, 7, -1),
+    plate(-6, 6, 246, 266, 7),
+    railZ(-6.35, 246, 266, 7), railZ(6.35, 246, 266, 7), railX(266.35, -6, 6, 7, 2.4),
+  ].flat(),
+  heat: [heat(0, 3, 78, 8, 0.05)],
+};
+
+/* ================================================================ VIII. THE RIBS
+ *
+ * One idea: take the parapet away. Every other stage is forgiving because a
+ * kerb catches you, so the cheapest way to ask for precision is to stop
+ * catching you -- no new rule, no new verb, just the deck worn back to the ribs
+ * that carry it. The wide plates between the ribs are deliberate: somewhere to
+ * breathe, and somewhere to line the next one up from.
+ */
+const s8 = {
+  id: 'ribs',
+  par: { time: 46, shell: 0.44 },
+  name: 'The Ribs',
+  numeral: 'VIII',
+  world: 'neve',
+  altitude: 3520,
+  epigraph: 'Where the deck has gone, the bones of it are still enough to walk.',
+  warmth: 0.0129, warmFall: 26,
+  killY: -26,
+  spawn: [0, 1.4, -14],
+  goal: [18, 9.4, 250],
+  goalR: 2.8,
+  waypoints: [[0, 0, 6], [0, 0, 20], [0, 0, 52], [0, 0, 70], [0, 4, 92],
+              [0, 4, 124], [0, 4, 142], [9, 4, 151], [18, 4, 160],
+              [18, 4, 196], [18, 4, 214], [18, 8, 238], [18, 8, 250]],
+  teach: [
+    { z: 14, text: 'No parapet on the ribs. Nothing will catch you out here.' },
+    { z: 86, text: 'Straighten up on the wide stone before you commit to the next one.' },
+  ],
+  boxes: [
+    plate(-6, 6, -16, 20, 0),
+    railZ(-6.35, -16, 20, 0, 2.0), railZ(6.35, -16, 20, 0, 2.0), railX(-16.35, -6, 6, 0, 2.0),
+
+    beam(0, 20, 52, 0, 7.6),                       // rib 1 -- no kerbs, on purpose
+    plate(-6, 6, 52, 70, 0),
+    railZ(-6.35, 52, 70, 0), railZ(6.35, 52, 70, 0),
+
+    ...ramp(-6, 6, 70, 92, 0, 4),
+    beam(0, 92, 124, 4, 7.2),                      // rib 2, after a climb
+    plate(-6, 6, 124, 142, 4),
+    railZ(-6.35, 124, 142, 4), railZ(6.35, 124, 142, 4),
+
+    ...chicane(0, 142, 9, 12, 4, 1),
+    /* rib 3 is the narrow one, and it is SHORTER for it. 36 metres of 5.8-wide
+     * beam with no parapet was not a test of precision, it was a test of how
+     * long you could hold one, and a keyboard player cleared it 3 times in 7.
+     * The rubble that used to sit in the middle of it is gone -- an obstacle on
+     * a beam with no kerbs has only one answer. */
+    beam(18, 160, 186, 4, 6.6),
+    plate(12, 24, 186, 196, 4),
+    railZ(11.65, 186, 196, 4), railZ(24.35, 186, 196, 4),
+    plate(12, 24, 196, 214, 4),
+    railZ(11.65, 196, 214, 4), railZ(24.35, 196, 214, 4),
+
+    ...ramp(12, 24, 214, 238, 4, 8),
+    plate(12, 24, 238, 258, 8),
+    railZ(11.65, 238, 258, 8), railZ(24.35, 238, 258, 8), railX(258.35, 12, 24, 8, 2.4),
+  ].flat(),
+  heat: [heat(0, 0, 60, 8, 0.05), heat(18, 4, 205, 8, 0.04)],
+};
+
+/* ================================================================= IX. THE SIEVE
+ *
+ * One idea: a gate and a grate close enough together that you cannot solve them
+ * one at a time. The gate wants you THIN and the grate wants you THICK, and
+ * there are only sixty metres between them, so the whole stage is one decision
+ * about how much shell to spend and when.
+ *
+ * And it has a way round. A gate you cannot fit and cannot avoid is not a
+ * decision, it is a wall with extra steps -- so the long way is always open,
+ * and it costs you time while the warm stone costs you shell. That is the trade.
+ */
+const s8b = {
+  id: 'sieve',
+  par: { time: 48, shell: 0.40 },
+  name: 'The Sieve',
+  numeral: 'IX',
+  world: 'neve',
+  altitude: 3980,
+  epigraph: 'One opening will not take you thick. The next will not hold you thin.',
+  warmth: 0.0136, warmFall: 24,
+  killY: -26,
+  spawn: [0, 1.4, -14],
+  goal: [20, 8.4, 214],
+  goalR: 2.8,
+  waypoints: [[0, 0, 6], [0, 0, 24], [0, 3, 46], [0, 3, 62], [0, 3, 76],
+              [0, 3, 96], [0, 3, 128], [0, 3, 146], [10, 3, 156], [20, 3, 166],
+              [20, 7, 192], [20, 7, 214]],
+  altRoute: [[0, 0, 6], [0, 0, 24], [0, 3, 46], [-16, 3, 50], [-24, 3, 68],
+             [-24, 3, 96], [-12, 3, 106], [0, 3, 110], [0, 3, 128], [0, 3, 146],
+             [10, 3, 156], [20, 3, 166], [20, 7, 192], [20, 7, 214]],
+  meltAt: { x: 0, z: 51, until: 0.53 },
+  teach: [
+    { z: 36, text: 'Warm stone, then a low gate. Melt to fit - or take the long way left.' },
+    { z: 84, text: 'Bars ahead, and they only hold a thick shell. You spent some getting through.' },
+  ],
+  boxes: [
+    plate(-6, 6, -16, 24, 0),
+    railZ(-6.35, -16, 24, 0, 2.0), railZ(6.35, -16, 24, 0, 2.0), railX(-16.35, -6, 6, 0, 2.0),
+
+    ...ramp(-6, 6, 24, 44, 0, 3),
+    plate(-6, 6, 44, 62, 3, 'warm'),
+    railZ(6.35, 44, 96, 3),
+    ...gate(62, -6, 6, -3, 3, 3),
+    plate(-3, 3, 62, 72, 3),
+
+    // ---- the long way round, always open and always slower
+    plate(-30, -6, 44, 56, 3),
+    plate(-30, -18, 56, 96, 3),
+    railZ(-30.35, 44, 112, 3), railX(43.65, -30, -6, 3),
+    plate(-30, 0, 96, 112, 3),
+    railX(104.35, -30, -6, 3),
+
+    // ---- and the bars, sixty metres on
+    plate(-6, 6, 72, 84, 3),
+    grate(-6, 6, 84, 108, 3),
+    plate(-6, 6, 108, 146, 3),
+    railZ(-6.35, 104, 146, 3), railZ(6.35, 96, 146, 3),
+
+    ...chicane(0, 146, 10, 12, 3, 1),
+    ...ramp(14, 26, 166, 190, 3, 7),
+    plate(14, 26, 190, 222, 7),
+    railZ(13.65, 190, 222, 7), railZ(26.35, 166, 222, 7), railX(222.35, 14, 26, 7, 2.4),
+  ].flat(),
+  /* Pulled back from the lintel on purpose. Sitting the vent at the gate's
+   * own feet meant the ball kept melting as it accelerated away, so it arrived
+   * at the bars 0.1 points too thin and fell through -- the two thresholds are
+   * only 27 points apart and every metre of hot ground between them eats the
+   * margin. Melt here, then travel cold. */
+  heat: [heat(0, 3, 50, 8, 0.26)],
+};
+
 /* ============================================================== X. THE WARDEN
  *
  * The boss, and the only stage with something on it that moves.
@@ -799,10 +1009,10 @@ const s9 = {
   name: 'The Warden',
   numeral: 'X',
   world: 'neve',
-  altitude: 1180,
+  altitude: 4500,
   boss: true,
   epigraph: 'Something has kept this road since before the first bearer. It has never let one pass.',
-  warmth: 0.0092, warmFall: 30,
+  warmth: 0.0144, warmFall: 30,
   killY: -30,
   spawn: [0, 1.4, -12],
   goal: [0, 19.2, 314],
@@ -921,5 +1131,5 @@ export const TITLE_SCENE = {
   heat: [],
 };
 
-export const STAGES = [s0, s1, s2, s3, s4, s5, s6, s9];
+export const STAGES = [s0, s1, s2, s3, s4, s5, s6, s7, s8, s8b, s9];
 export const stageById = (id) => STAGES.find((s) => s.id === id) || STAGES[0];
