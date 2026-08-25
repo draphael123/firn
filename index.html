@@ -64,6 +64,28 @@
     animation: rise .3s ease both;
   }
   .screen::-webkit-scrollbar { width: 0; }
+
+  /* The TITLE screen is the exception. Elsewhere a heavy scrim is buying
+     legibility for long lists of settings; here it was burying the one thing
+     the screen exists to show. Much lighter, weighted to the bottom-left where
+     the words actually sit, and the type carries its own contrast. */
+  #scr-title {
+    background:
+      linear-gradient(105deg, rgba(5,9,12,.80) 0%, rgba(5,9,12,.55) 26%, rgba(5,9,12,.16) 52%, rgba(5,9,12,0) 74%),
+      linear-gradient(to top, rgba(5,9,12,.55) 0%, rgba(5,9,12,0) 42%);
+  }
+  #scr-title .wordmark { text-shadow: 0 6px 46px rgba(3,8,12,.95), 0 0 14px rgba(3,8,12,.75); }
+  /* A lighter scrim means the menu can no longer coast on a black background:
+     lift the resting state so unselected entries stay legible over snow. */
+  #scr-title .menu li { color: #a9bfca; }
+  #scr-title .menu li[aria-selected="true"] { color: #ffffff; }
+  #scr-title .sub { opacity: .95; }
+  #scr-title .hint { opacity: .8; }
+  #scr-title .sub,
+  #scr-title .eyebrow,
+  #scr-title .menu li,
+  #scr-title .hint { text-shadow: 0 2px 16px rgba(3,8,12,.95), 0 0 4px rgba(3,8,12,.85); }
+  .foot { text-shadow: 0 2px 14px rgba(3,8,12,.9); }
   @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   /* Auto margins centre the column when it fits and let it scroll when it does
      not. `justify-content: center` clips the TOP of an overflowing flex child,
@@ -190,7 +212,7 @@
   }
   #hud .tl { position: absolute; top: 22px; left: var(--pad); }
   #hud .tr { position: absolute; top: 22px; right: var(--pad); text-align: right; }
-  #hud .bl { position: absolute; bottom: 26px; left: var(--pad); width: min(300px, 40vw); }
+  #hud .bl { position: absolute; bottom: 30px; left: var(--pad); width: min(330px, 44vw); }
   .hnum {
     font-family: var(--serif); font-size: 40px; line-height: 1;
     font-variant-numeric: tabular-nums; color: var(--bone);
@@ -201,16 +223,33 @@
 
   /* The shell bar is a thin ruled gauge with the two thresholds etched on it,
      because those numbers ARE the game. */
-  #shellWrap { margin-top: 8px; position: relative; height: 8px; background: rgba(168,200,212,.10); }
+  #shellWrap { margin-top: 9px; position: relative; height: 13px; background: rgba(168,200,212,.13); }
   #shellFill { position: absolute; inset: 0 auto 0 0; background: var(--ice); transition: width .1s linear; }
-  #shellWrap .tick { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--line2); }
+  #shellWrap .tick { position: absolute; top: -4px; bottom: -4px; width: 1px; background: var(--line2); }
+  /* The two thresholds ARE the game, so name them on the gauge rather than
+     leaving the player to learn them by falling through a floor. */
+  #shellWrap .tick i {
+    position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
+    font-style: normal; font-size: 8.5px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--dim); white-space: nowrap;
+  }
+  #shellWrap .tick.grate i { color: var(--ember); opacity: .85; }
   #shellWrap .tick.gate  { background: rgba(232,240,243,.5); }
   #shellWrap .tick.grate { background: var(--ember); }
   #shellWrap.thin #shellFill { background: var(--gold); }
   #shellWrap.bare #shellFill { background: var(--ember); }
   #shellRow { display: flex; justify-content: space-between; align-items: baseline; }
   #shellPct { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--ice); }
+  #shellFoot {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-top: 17px;
+  }
   #meltRate { font-size: 10px; letter-spacing: .14em; color: var(--dim); text-transform: uppercase; }
+  #meltEta {
+    font-size: 11px; letter-spacing: .1em; color: var(--gold);
+    font-variant-numeric: tabular-nums;
+  }
+  #shellWrap.bare ~ #shellFoot #meltEta { color: var(--ember); }
 
   #warn {
     position: absolute; left: 50%; top: 15%; transform: translateX(-50%);
@@ -334,10 +373,13 @@
     </div>
     <div id="shellWrap">
       <div id="shellFill"></div>
-      <div class="tick gate"></div>
-      <div class="tick grate"></div>
+      <div class="tick gate"><i>gate</i></div>
+      <div class="tick grate"><i>grate</i></div>
     </div>
-    <div id="meltRate">stable</div>
+    <div id="shellFoot">
+      <span id="meltRate">holding</span>
+      <span id="meltEta"></span>
+    </div>
   </div>
   <div id="warn"></div>
   <div id="teach"></div>

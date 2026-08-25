@@ -42,7 +42,7 @@ export const WORLDS = {
     ridges: [[340, 90, 0x6f8ba0, 0xd8e8f0], [640, 150, 0x88a3b6, 0xe6f1f6]],
     ceiling: null,
     fall: 'spindrift', fallCount: 3200, fallSize: 0.11, fallOpacity: 0.5,
-    exposure: 1.55,
+    exposure: 1.72,
   },
   icefall: {
     id: 'icefall', name: 'The Icefall', band: 0.22,

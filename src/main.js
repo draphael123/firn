@@ -138,40 +138,26 @@ function startAttract() {
   music.play('title');
 }
 
-/** A slow circling lean, so the ice orbits the ring rather than sitting still. */
-function attractInput(t) {
-  return { x: Math.sin(t * 0.34) * 0.30, z: Math.cos(t * 0.34) * 0.30 };
+/**
+ * Hold the ice on a slow circle around the ring.
+ *
+ * A gentle circling LEAN does not work: rolling resistance is deliberately tiny,
+ * so any steady tilt just spirals the ball outward until it parks against the
+ * kerb -- behind the menu column, where the only moving thing on the screen
+ * cannot be seen. So steer it properly: a target creeping round a small circle,
+ * and the same proportional chase the autopilot uses.
+ */
+function attractInput(sim) {
+  const a = sim.time * 0.40;
+  const tx = Math.cos(a) * 6.5, tz = Math.sin(a) * 6.5;
+  const p = sim.ball.p, v = sim.ball.v;
+  const ex = (tx - p.x) * 1.1 - v.x;
+  const ez = (tz - p.z) * 1.1 - v.z;
+  const k = 0.20, c = (n) => (n < -1 ? -1 : n > 1 ? 1 : n);
+  // pitch drives +Z, roll drives -X
+  return { x: c(ez * k), z: c(-ex * k) };
 }
 
-/** The held beat: name the stage, then let go. Any key skips it. */
-function arm(stage, hold) {
-  mode = 'ready';
-  // the establishing shot needs room to breathe; without it, don't linger
-  readyT = settings.cinematic ? hold : Math.min(hold, 0.5);
-  $('rdNum').textContent = stage.numeral;
-  $('rdName').textContent = stage.name;
-  $('rdEpi').textContent = stage.epigraph || '';
-  const r = $('ready');
-  r.classList.remove('hide');
-  r.style.animation = 'none'; void r.offsetWidth; r.style.animation = '';
-  audio.setBed(true);
-  music.play(TRACK_FOR_WORLD[stage.world] || 'cold');
-  view.shot('intro', readyT);
-}
-
-function release() {
-  if (mode !== 'ready') return;
-  mode = 'play';
-  view.shot('follow');
-  $('ready').classList.add('hide');
-  audio.blip(660, 0.06, 0.14);
-}
-
-/* Purely cosmetic: snap to black, then transition off over the next frame.
- * The fade used to gate the stage swap behind a deferred callback, which meant
- * one throw anywhere in stage setup left the screen black with the menu still
- * up and nothing in the console. State changes are synchronous now; this only
- * paints. It also makes restart genuinely instant, which the stage needs. */
 let flashTimer = 0;
 function burstFlash() {
   const b = $('burst');
@@ -205,6 +191,18 @@ function updateHud() {
 
   const m = sim.meltLast;
   $('meltRate').textContent = m < 0.004 ? 'holding' : m < 0.02 ? 'melting' : m < 0.06 ? 'melting fast' : 'thawing';
+
+  /* How much shell is left answers the wrong question. What you actually need
+   * to decide -- take the gate, take the long way, get off this hot ground --
+   * is HOW LONG you have at the rate you are melting right now. */
+  const eta = $('meltEta');
+  if (m > 0.005 && shell > 0) {
+    const toBare = shell / m;
+    const toGrate = (shell - GRATE_SHELL) / m;
+    eta.textContent = shell > GRATE_SHELL && toGrate < 30
+      ? `${toGrate.toFixed(0)}s to the bars`
+      : `${toBare.toFixed(0)}s left`;
+  } else eta.textContent = '';
 
   const w = $('warn');
   let msg = '';
@@ -280,7 +278,7 @@ export function step(dt) {
     updateHud();
     if (sim.state !== 'run') finish();
   } else if (mode === 'attract') {
-    sim.step(dt, attractInput(sim.time));
+    sim.step(dt, attractInput(sim));
     sim.events.length = 0;
     view.update(sim, dt);
     if (sim.state !== 'run') sim.reset();

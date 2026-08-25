@@ -97,24 +97,74 @@ function makeCrackTexture() {
   return t;
 }
 
-/** The passenger: a curled body with a head, readable in silhouette. */
-function makeSleeper(mat) {
+/**
+ * The passenger. A curled animal, readable in silhouette: heavy haunch, tucked
+ * limbs, a snout laid along them, ears folded back, tail round the whole thing.
+ *
+ * The eyes do the real work. They are shut while the ice is thick and open as
+ * it goes -- so the moment the shell gets dangerous is the moment something
+ * inside your ball starts looking out of it. Nothing else in the game says
+ * "you are running out" as fast, and it costs two spheres and a scale.
+ */
+function makeSleeper(mat, eyeMat) {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), mat);
-  body.scale.set(1.0, 0.78, 1.22);
+  const ico = (d) => new THREE.IcosahedronGeometry(1, d);
+
+  const body = new THREE.Mesh(ico(2), mat);
+  body.scale.set(1.0, 0.82, 1.18);
   g.add(body);
-  const head = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), mat);
-  head.scale.setScalar(0.56);
-  head.position.set(0, 0.36, 0.86);
+
+  const haunch = new THREE.Mesh(ico(1), mat);
+  haunch.scale.set(0.82, 0.72, 0.72);
+  haunch.position.set(0, -0.18, -0.72);
+  g.add(haunch);
+
+  const head = new THREE.Group();
+  const skull = new THREE.Mesh(ico(2), mat);
+  skull.scale.setScalar(0.58);
+  head.add(skull);
+  const snout = new THREE.Mesh(ico(1), mat);
+  snout.scale.set(0.30, 0.26, 0.46);
+  snout.position.set(0, -0.16, 0.56);
+  head.add(snout);
+  for (const sx of [-1, 1]) {                 // ears, folded back along the skull
+    const ear = new THREE.Mesh(ico(0), mat);
+    ear.scale.set(0.13, 0.34, 0.20);
+    ear.position.set(sx * 0.34, 0.40, -0.16);
+    ear.rotation.set(-0.55, 0, sx * 0.30);
+    head.add(ear);
+  }
+  const eyes = [];
+  for (const sx of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), eyeMat);
+    eye.position.set(sx * 0.30, 0.10, 0.42);
+    eyes.push(eye);
+    head.add(eye);
+  }
+  head.position.set(0, 0.20, 0.74);
+  head.rotation.x = 0.30;                     // laid down over the forelimbs
   g.add(head);
-  for (const sx of [-1, 1]) {              // limbs tucked against the body
-    const limb = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0), mat);
-    limb.scale.set(0.30, 0.26, 0.62);
-    limb.position.set(sx * 0.72, -0.34, 0.24);
-    limb.rotation.z = sx * 0.4;
+
+  for (const sx of [-1, 1]) {                 // forelimbs tucked under the chin
+    const limb = new THREE.Mesh(ico(1), mat);
+    limb.scale.set(0.26, 0.24, 0.62);
+    limb.position.set(sx * 0.52, -0.42, 0.44);
+    limb.rotation.set(0.2, sx * -0.22, sx * 0.34);
     g.add(limb);
   }
-  return g;
+
+  // the tail, curled round the flank -- three segments is enough to read
+  for (let i = 0; i < 4; i++) {
+    const t = i / 3;
+    const seg = new THREE.Mesh(ico(1), mat);
+    const r = 0.30 - t * 0.15;
+    seg.scale.set(r, r, r * 1.25);
+    const a = 0.6 + t * 2.1;
+    seg.position.set(Math.sin(a) * (0.86 + t * 0.16), -0.40 + t * 0.30, -0.60 + Math.cos(a) * 0.62);
+    g.add(seg);
+  }
+
+  return { group: g, head, eyes, body };
 }
 
 export function buildBall(settings) {
@@ -154,8 +204,13 @@ export function buildBall(settings) {
     color: SLEEPER, roughness: 0.5, metalness: 0.08,
     emissive: new THREE.Color(GOLD), emissiveIntensity: 0,
   });
+  const eyeMat = new THREE.MeshStandardMaterial({
+    color: 0x2a1c08, roughness: 0.25, metalness: 0.1,
+    emissive: new THREE.Color(0xffb642), emissiveIntensity: 0,
+  });
   const sleeperPivot = new THREE.Group();
-  const sleeper = makeSleeper(sleeperMat);
+  const built = makeSleeper(sleeperMat, eyeMat);
+  const sleeper = built.group;
   sleeper.scale.setScalar(T.R_MIN * 0.62);
   sleeperPivot.add(sleeper);
 
@@ -169,7 +224,9 @@ export function buildBall(settings) {
 
   return {
     group, shell, ice, rime, crack, sleeper, sleeperPivot, glow,
-    iceMat, rimeMat, crackMat, sleeperMat,
+    head: built.head, eyes: built.eyes, body: built.body,
+    iceMat, rimeMat, crackMat, sleeperMat, eyeMat,
+    breath: 0,
     lean: new THREE.Vector3(),
     accel: new THREE.Vector3(),
     vPrev: new THREE.Vector3(),
@@ -249,6 +306,21 @@ export function updateBall(B, sim, dt, settings) {
   B.sleeper.rotation.x = -0.5 + unfurl * 0.55 + B.brace * 0.4;
   B.sleeper.rotation.y += dt * (0.25 + agit * 2.4);
   B.sleeper.rotation.z = Math.sin(sim.time * 3.1) * agit * 0.5;
+
+  // It breathes. Slow and deep while it sleeps, shallow and quick once it does
+  // not -- the flank moving at all is what separates a passenger from a rock.
+  B.breath += dt * (0.85 + agit * 3.2);
+  const swell = Math.sin(B.breath) * (0.045 - agit * 0.026);
+  B.body.scale.set(1.0 + swell, 0.82 + swell * 0.7, 1.18 + swell * 0.5);
+
+  // The head lifts and casts about as it comes round.
+  B.head.rotation.x = 0.30 - agit * 0.62 - B.brace * 0.25;
+  B.head.rotation.y = Math.sin(sim.time * 1.5 + 0.7) * agit * 0.75;
+
+  // And the eyes open. Shut under thick ice; wide, and lit, once it is going.
+  const open = Math.min(1, Math.max(0, (agit - 0.10) / 0.55) + B.brace * 0.5);
+  for (const e of B.eyes) e.scale.set(0.115, 0.115 * (0.06 + open * 0.94), 0.075);
+  B.eyeMat.emissiveIntensity = open * 2.6;
 
   B.sleeperMat.emissiveIntensity = agit * 1.5 + b.startle * 0.35;
   B.glow.intensity = agit * 2.2 + b.startle * 0.8 + B.crackAmt * 1.5;
