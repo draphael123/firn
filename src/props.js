@@ -20,6 +20,9 @@
 
 import * as THREE from '../vendor/three.module.js';
 import { mulberry32, rotV } from './sim.js';
+
+const _n = [0, 0, 0];
+const _l = [0, 0, 0];
 import { GROUND_Y } from './worlds.js';
 
 // One source of truth for how far below the causeway the ground sits.
@@ -392,29 +395,98 @@ export function buildStageProps(stage, weather) {
     g.add(drift.seal());
   }
 
-  // ---- the worn track: generations of bearers have scoured the middle of the
-  // road bare. A path within the path, and the clearest possible racing line.
-  /* Stone polished by traffic, not a dirt path. 0x413c37 was a warm brown that
-   * read as mud once the deck around it stopped being black -- and mud is the
-   * one thing a frozen causeway should not have. Worn stone is SMOOTHER and a
-   * little paler than the flagstone it is cut into, so roughness does most of
-   * the work and the colour barely has to differ at all. */
+  /* ---- the worn track: generations of bearers have scoured the middle of the
+   * road bare. A path within the path, and the clearest possible racing line.
+   *
+   * It follows the ROUTE, not the boxes. Laying one slab per deck box decided
+   * the stripe's direction from the box's own proportions -- `e[2] >= e[0]` --
+   * which is not the direction anyone travels. An arc segment is 12 wide and 2
+   * long and a landing plate is 21 by 16, so both got the stripe laid ACROSS the
+   * carriageway, and every bend came out as a scatter of disconnected white
+   * slabs lying at angles to the road. That is what read as clipping.
+   *
+   * Sampling the waypoint polyline instead gives one continuous ribbon that
+   * turns with the road and climbs the ramps, and the pieces abut end to end
+   * instead of overlapping, so there is nothing for them to fight with.
+   */
   const trackMat = new THREE.MeshStandardMaterial({
     color: icy ? 0x8a99a3 : 0x8d9298, roughness: 0.34, metalness: 0.10,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
   });
-  trackMat.polygonOffset = true;
-  trackMat.polygonOffsetFactor = -2;
-  trackMat.polygonOffsetUnits = -2;
-  const track = bank(BOX, trackMat, 140);
-  for (const b of deckList) {
-    const az = alongZ(b);
-    const w = Math.min(2.6, (az ? b.e[0] : b.e[2]) * 0.9);
-    const p = pt(b, 0, b.e[1] + 0.012, 0);
-    const r = rot(b);
-    const f = alongFactor(b);
-    track.put(p[0], p[1], p[2],
-      az ? w : b.e[0] * 2 * f, 0.02, az ? b.e[2] * 2 * f : w,
-      r[0], r[1], r[2]);
+  const track = bank(BOX, trackMat, 900);
+
+  /** Top of whatever the ball would stand on at (x,z) -- ramps and bends too. */
+  const surfaceTopAt = (x, z) => {
+    let best = null;
+    for (const b of stage.boxes) {
+      if (b.kind === 'rail' || b.kind === 'gate' || b.kind === 'block') continue;
+      if (!b.q) {
+        if (Math.abs(x - b.c[0]) > b.e[0] || Math.abs(z - b.c[2]) > b.e[2]) continue;
+        const top = b.c[1] + b.e[1];
+        if (best === null || top > best) best = top;
+        continue;
+      }
+      // rotated: intersect the vertical line with the box's own top plane
+      rotV(b.q, 0, 1, 0, _n);
+      const ny = _n[1];
+      if (Math.abs(ny) < 1e-4) continue;
+      const p0x = b.c[0] + b.e[1] * _n[0];
+      const p0y = b.c[1] + b.e[1] * ny;
+      const p0z = b.c[2] + b.e[1] * _n[2];
+      const ty = p0y - (_n[0] * (x - p0x) + _n[2] * (z - p0z)) / ny;
+      rotV(b.qc, x - b.c[0], ty - b.c[1], z - b.c[2], _l);
+      if (Math.abs(_l[0]) > b.e[0] || Math.abs(_l[2]) > b.e[2]) continue;
+      if (best === null || ty > best) best = ty;
+    }
+    return best;
+  };
+
+  const STEP = 2.2;
+  for (const route of [stage.waypoints, stage.altRoute]) {
+    if (!route) continue;
+    for (let i = 0; i < route.length - 1; i++) {
+      const a = route[i], b2 = route[i + 1];
+      const dx = b2[0] - a[0], dz = b2[2] - a[2];
+      const len = Math.hypot(dx, dz);
+      if (len < 0.01) continue;
+      const yaw = Math.atan2(dx, dz);
+      const ux = dx / len, uz = dz / len;
+      const n = Math.max(1, Math.round(len / STEP));
+      const seg = len / n;
+      for (let k = 0; k < n; k++) {
+        const t = (k + 0.5) / n;
+        const x = a[0] + dx * t, z = a[2] + dz * t;
+        /* Sample the surface at BOTH ends and pitch the piece to match. A flat
+         * slab laid on a slope dives under the deck at one end and lifts off it
+         * at the other, so only its middle shows -- which is why the stripe came
+         * out as a row of dashes up every ramp. */
+        const y0 = surfaceTopAt(x - ux * seg / 2, z - uz * seg / 2);
+        const y1 = surfaceTopAt(x + ux * seg / 2, z + uz * seg / 2);
+        const top = surfaceTopAt(x, z);
+        if (top === null) continue;              // over a gap: no stripe
+        let pitch = 0, run = seg;
+        if (y0 !== null && y1 !== null) {
+          pitch = Math.atan2(y0 - y1, seg);      // same sign convention as ramp()
+          run = Math.hypot(seg, y1 - y0);
+        }
+        track.put(x, top + 0.012, z, 2.6, 0.02, run * 1.04, pitch, yaw, 0);
+      }
+      /* A patch at each interior corner. Two straight runs meeting at an angle
+       * leave a wedge open on the outside of the turn however well each one is
+       * sized, and a wedge of bare deck inside a continuous stripe reads as the
+       * stripe being broken. */
+      if (i > 0) {
+        const prev = route[i - 1];
+        const yaw0 = Math.atan2(a[0] - prev[0], a[2] - prev[2]);
+        let d = yaw - yaw0;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        const top = surfaceTopAt(a[0], a[2]);
+        if (top !== null && Math.abs(d) > 0.05) {
+          track.put(a[0], top + 0.012, a[2], 2.6, 0.02, 2.6, 0, yaw0 + d / 2, 0);
+        }
+      }
+    }
   }
   g.add(track.seal());
 

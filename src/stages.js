@@ -656,7 +656,12 @@ const s5 = {
     plate(-2, 10, 214, 234, 11),
     ...ramp(-2, 10, 234, 254, 11, 16),
     plate(-2, 10, 254, 268, 16),
-    railZ(-2.35, 214, 268, 16), railZ(10.35, 214, 268, 16),
+    /* The plate below runs at 11 and the one above the ramp at 16, so a single
+     * pair of kerbs at 16 spanning both left z 214-234 completely open -- the
+     * walls floated five units above the road they were supposed to guard.
+     * Third time this exact fault has turned up after a ramp was re-graded. */
+    railZ(-2.35, 214, 234, 11), railZ(10.35, 214, 234, 11),
+    railZ(-2.35, 254, 268, 16), railZ(10.35, 254, 268, 16),
     railX(268.35, -2, 10, 16, 2.2),
   ].flat(),
   heat: [heat(20, 5, 60, 9, 0.03)],

@@ -28,6 +28,8 @@ const ICE = 0xdbeef5;
 const SLEEPER = 0x7d5326;
 const SLEEPER_PALE = 0xe8d7b4;
 const GOLD = 0xc9a961;
+const EMBER = new THREE.Color(0xd4603a);
+const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 /** Blotchy frost, as an alpha map. Patches are what make the spin visible. */
 function makeRimeTexture() {
@@ -124,63 +126,66 @@ function makeCrackTexture() {
  * inside your ball starts looking out of it. Nothing else in the game says
  * "you are running out" as fast, and it costs two spheres and a scale.
  */
+/**
+ * A person, curled, asleep, sealed in the ice.
+ *
+ * It was a small animal for most of this game's life and it never carried the
+ * premise. The rite is bearers taking a SLEEPER up a mountain -- a body, wound
+ * and carried, which is why there are cairns for the ones who failed and a bell
+ * at each end. A person reads that; a fox reads as cargo.
+ *
+ * Foetal, knees drawn to the chest and arms wrapped round the shins, because
+ * that is both how you carry a body and how a thing that must not wake lies.
+ * The wrap is the dark material and the face, hands and feet are the pale one,
+ * so the silhouette is legible through blue ice at a distance where no detail
+ * survives -- the same reason the shape is built from six masses and not sixty.
+ */
 function makeSleeper(mat, eyeMat, pale) {
   const g = new THREE.Group();
   const ico = (d) => new THREE.IcosahedronGeometry(1, d);
+  const put = (m, sx, sy, sz, px, py, pz, rx = 0, ry = 0, rz = 0) => {
+    m.scale.set(sx, sy, sz); m.position.set(px, py, pz); m.rotation.set(rx, ry, rz);
+    g.add(m); return m;
+  };
 
-  const body = new THREE.Mesh(ico(2), mat);
-  body.scale.set(1.0, 0.82, 1.18);
-  g.add(body);
+  /* SIX masses, and no more.
+   *
+   * The first version of this was a foetal curl built from fourteen small
+   * pieces and it read as a lump of gravel, because at the size this actually
+   * appears -- a couple of dozen pixels across a ball you are watching from
+   * behind -- adjacent masses merge into one blob and every piece under about a
+   * fifth of the figure's height is simply lost.
+   *
+   * So: seated and curled UPRIGHT rather than foetal. A vertical stack with a
+   * pale head clearly proud at the top is the one arrangement that still reads
+   * as a person when it is thirty pixels tall, because the head separates
+   * against the ice instead of being buried in the shoulders.
+   */
+  const body = put(new THREE.Mesh(ico(2), mat), 0.46, 0.50, 0.42, 0, -0.06, 0);
 
-  const haunch = new THREE.Mesh(ico(1), pale);
-  haunch.scale.set(0.82, 0.72, 0.72);
-  haunch.position.set(0, -0.18, -0.72);
-  g.add(haunch);
+  // knees drawn up in front -- one mass, not two legs
+  put(new THREE.Mesh(ico(1), mat), 0.42, 0.30, 0.30, 0, -0.34, 0.26, 0.30, 0, 0);
+  // arms wrapped round them, again as a single band
+  put(new THREE.Mesh(ico(1), pale), 0.46, 0.16, 0.20, 0, -0.20, 0.34, -0.15, 0, 0);
 
   const head = new THREE.Group();
-  const skull = new THREE.Mesh(ico(2), mat);
-  skull.scale.setScalar(0.58);
+  const skull = new THREE.Mesh(ico(2), pale);
+  skull.scale.set(0.30, 0.33, 0.30);
   head.add(skull);
-  const snout = new THREE.Mesh(ico(1), pale);
-  snout.scale.set(0.30, 0.26, 0.46);
-  snout.position.set(0, -0.16, 0.56);
-  head.add(snout);
-  for (const sx of [-1, 1]) {                 // ears, folded back along the skull
-    const ear = new THREE.Mesh(ico(0), mat);
-    ear.scale.set(0.13, 0.34, 0.20);
-    ear.position.set(sx * 0.34, 0.40, -0.16);
-    ear.rotation.set(-0.55, 0, sx * 0.30);
-    head.add(ear);
-  }
+  const hood = new THREE.Mesh(ico(1), mat);         // hood pushed back off the face
+  hood.scale.set(0.34, 0.33, 0.30);
+  hood.position.set(0, 0.05, -0.13);
+  head.add(hood);
   const eyes = [];
   for (const sx of [-1, 1]) {
     const eye = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), eyeMat);
-    eye.position.set(sx * 0.30, 0.10, 0.42);
+    eye.position.set(sx * 0.12, 0.0, 0.25);
     eyes.push(eye);
     head.add(eye);
   }
-  head.position.set(0, 0.20, 0.74);
-  head.rotation.x = 0.30;                     // laid down over the forelimbs
+  head.position.set(0, 0.46, 0.04);                 // proud of the shoulders
+  head.rotation.x = 0.42;                           // chin down: asleep, not dead
   g.add(head);
-
-  for (const sx of [-1, 1]) {                 // forelimbs tucked under the chin
-    const limb = new THREE.Mesh(ico(1), pale);
-    limb.scale.set(0.26, 0.24, 0.62);
-    limb.position.set(sx * 0.52, -0.42, 0.44);
-    limb.rotation.set(0.2, sx * -0.22, sx * 0.34);
-    g.add(limb);
-  }
-
-  // the tail, curled round the flank -- three segments is enough to read
-  for (let i = 0; i < 4; i++) {
-    const t = i / 3;
-    const seg = new THREE.Mesh(ico(1), i === 3 ? pale : mat);
-    const r = 0.30 - t * 0.15;
-    seg.scale.set(r, r, r * 1.25);
-    const a = 0.6 + t * 2.1;
-    seg.position.set(Math.sin(a) * (0.86 + t * 0.16), -0.40 + t * 0.30, -0.60 + Math.cos(a) * 0.62);
-    g.add(seg);
-  }
 
   return { group: g, head, eyes, body };
 }
@@ -308,7 +313,8 @@ export function updateBall(B, sim, dt, settings) {
    * enough to see through at any shell. */
   if (B.iceMat.thickness !== undefined) {
     B.iceMat.transmission = 0.97 - shell * 0.07;
-    B.iceMat.roughness = 0.05 + shell * 0.14;
+    // wetter as it goes: meltwater on a shrinking shell catches the sky
+    B.iceMat.roughness = 0.02 + shell * 0.17;
     B.iceMat.thickness = 0.15 + shell * 0.9;
     B.iceMat.attenuationDistance = 1.4 + (1 - shell) * 6;
   } else {
@@ -341,8 +347,30 @@ export function updateBall(B, sim, dt, settings) {
   const agit = Math.pow(1 - shell, T.WOBBLE_P);
   B.brace = Math.max(0, B.brace - dt * 4.5);
   B.crackAmt = Math.max(0, B.crackAmt - dt * 3.2);
-  B.crackMat.opacity = B.crackAmt * 0.85;
-  B.crack.visible = B.crackAmt > 0.01;
+
+  /* HOW CLOSE AM I TO LOSING IT -- read off the ball, not off the gauge.
+   *
+   * The fracture lattice used to exist only as an impact flash, which meant the
+   * shell looked identical at 90% and at 25% except for a little less frost.
+   * The number was on the HUD and nowhere else, so the thing the whole game is
+   * about was something you had to look away from the ball to know.
+   *
+   * Three stages, and they arrive in an order you can feel:
+   *   below 55%  the lattice appears at all, and spreads
+   *   below 30%  it warms toward ember -- the ice is going, not just thinning
+   *   below 15%  it PULSES, faster the closer it gets, which is the one signal
+   *              that reads in peripheral vision while you are steering
+   */
+  const stress = clamp01((0.55 - shell) / 0.55);
+  // pulses between mostly-there and full, never to nothing: a warning light
+  // that switches off for half its cycle is not a warning light
+  const pulse = shell < 0.15
+    ? 0.72 + 0.28 * Math.sin(sim.time * (7 + (0.15 - shell) * 60))
+    : 1;
+  B.crackMat.opacity = Math.min(1, B.crackAmt * 0.85 + Math.pow(stress, 1.4) * 0.75 * pulse);
+  B.crackMat.color.setHex(0xffffff);
+  if (stress > 0.45) B.crackMat.color.lerp(EMBER, Math.min(1, (stress - 0.45) / 0.5));
+  B.crack.visible = B.crackMat.opacity > 0.01;
 
   // Pressed OUTWARD by whatever the ball is doing: the passenger lags the
   // acceleration, exactly as you would in a vehicle.
@@ -394,19 +422,19 @@ export function updateBall(B, sim, dt, settings) {
   // not -- the flank moving at all is what separates a passenger from a rock.
   B.breath += dt * (0.85 + agit * 3.2);
   const swell = Math.sin(B.breath) * (0.045 - agit * 0.026);
-  B.body.scale.set(1.0 + swell, 0.82 + swell * 0.7, 1.18 + swell * 0.5);
+  B.body.scale.set(0.46 + swell * 0.5, 0.50 + swell * 0.4, 0.42 + swell * 0.5);
 
   // The head lifts and casts about as it comes round.
-  B.head.rotation.x = 0.30 - agit * 0.62 - B.brace * 0.25;
+  B.head.rotation.x = 0.42 - agit * 0.72 - B.brace * 0.30;   // the head comes up
   B.head.rotation.y = Math.sin(sim.time * 1.5 + 0.7) * agit * 0.75;
 
   // And the eyes open. Shut under thick ice; wide, and lit, once it is going.
   const open = Math.min(1, Math.max(0, (agit - 0.10) / 0.55) + B.brace * 0.5);
-  for (const e of B.eyes) e.scale.set(0.115, 0.115 * (0.06 + open * 0.94), 0.075);
+  for (const e of B.eyes) e.scale.set(0.072, 0.072 * (0.06 + open * 0.94), 0.05);
   B.eyeMat.emissiveIntensity = open * 2.6;
 
-  B.sleeperMat.emissiveIntensity = agit * 1.5 + b.startle * 0.35;
-  B.paleMat.emissiveIntensity = agit * 0.9 + b.startle * 0.2;
+  B.sleeperMat.emissiveIntensity = agit * 0.55 + b.startle * 0.25;
+  B.paleMat.emissiveIntensity = agit * 0.30 + b.startle * 0.15;
   // the interior fill rides with the shell so it stays a lit creature, not a
   // shadow, at every thickness
   B.fill.intensity = 2.4 + agit * 1.4;

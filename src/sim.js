@@ -41,7 +41,17 @@ export const T = {
   V_MAX: 24,
 
   // Melt. Deliberately independent of shell -- see MELT INVARIANT below.
-  FRICTION_MELT: 0.00042,   // shell/s per m/s of contact speed
+  /* Raised from 0.00042 (+31%). The premise is that every second of SPEED costs
+   * you the thing keeping it asleep, and at the old value the ambient of the
+   * ground you stood on dominated so completely that going fast was nearly
+   * free -- the melt clock ran on WHERE you were, not on HOW you drove.
+   *
+   * The ceiling is not comfort, it is the wobble: a thinner shell is a less
+   * stable one, so melting faster also means arriving at the summit less able
+   * to hold a line. At 0.00072 and 0.00060 The Cold Stair threw the pilot off
+   * the road entirely. 0.00055 is the most this route survives, which makes it
+   * the real budget rather than a number picked for feel. */
+  FRICTION_MELT: 0.00055,   // shell/s per m/s of contact speed
   HEAT_FALLOFF: 1.6,        // exponent on heat-source radial falloff
 
   // The sleeper. Offset centre of mass, worsening as the shell thins.
