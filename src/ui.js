@@ -15,7 +15,10 @@ const LS = 'firn.v1';
 /** One schema drives the model, the defaults, the storage and the rendering. */
 export const SETTINGS_SCHEMA = [
   { group: 'Control', items: [
-    { key: 'tiltMax',   label: 'Tilt limit',     values: [0.36, 0.46, 0.56], names: ['21°', '26°', '32°'], def: 1 },
+    // The gentlest option is a floor, not a preference: a rise steeper than
+    // your tilt limit cannot be climbed by any amount of skill, so this value
+    // is bounded below by the steepest ramp in the game. See test/climb-check.
+    { key: 'tiltMax',   label: 'Tilt limit',     values: [0.40, 0.46, 0.56], names: ['23°', '26°', '32°'], def: 1 },
     { key: 'tiltRate',  label: 'Tilt response',  values: [3.2, 5.0, 7.5], names: ['Measured', 'Normal', 'Quick'], def: 1 },
     // Camera-relative is the default because "away from the camera" has to keep
     // meaning that after the camera swings round a corner. Fixed is kept for

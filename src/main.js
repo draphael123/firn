@@ -158,6 +158,30 @@ function attractInput(sim) {
   return { x: c(ez * k), z: c(-ex * k) };
 }
 
+/** The held beat: name the stage, then let go. Any key skips it. */
+function arm(stage, hold) {
+  mode = 'ready';
+  // the establishing shot needs room to breathe; without it, don't linger
+  readyT = settings.cinematic ? hold : Math.min(hold, 0.5);
+  $('rdNum').textContent = stage.numeral;
+  $('rdName').textContent = stage.name;
+  $('rdEpi').textContent = stage.epigraph || '';
+  const r = $('ready');
+  r.classList.remove('hide');
+  r.style.animation = 'none'; void r.offsetWidth; r.style.animation = '';
+  audio.setBed(true);
+  music.play(TRACK_FOR_WORLD[stage.world] || 'cold');
+  view.shot('intro', readyT);
+}
+
+function release() {
+  if (mode !== 'ready') return;
+  mode = 'play';
+  view.shot('follow');
+  $('ready').classList.add('hide');
+  audio.blip(660, 0.06, 0.14);
+}
+
 let flashTimer = 0;
 function burstFlash() {
   const b = $('burst');
