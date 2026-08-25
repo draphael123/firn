@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>FIRN</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<meta name="description" content="Roll a sleeping thing, sealed in ice, down out of the cold. Every second of speed melts the only thing keeping it asleep.">
+<meta name="description" content="Carry a sleeping thing, sealed in ice, up out of a thawing world. Every second of speed melts the only thing keeping it asleep.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
@@ -180,10 +180,10 @@
   /* The world can be a bright ice field, so the HUD cannot rely on the scene
      being dark. Corner scrims plus a shadow keep it legible over anything. */
   #hud::before, #hud::after {
-    content: ''; position: absolute; left: 0; right: 0; height: 190px; pointer-events: none;
+    content: ''; position: absolute; left: 0; right: 0; height: 150px; pointer-events: none;
   }
-  #hud::before { top: 0; background: linear-gradient(to bottom, rgba(5,12,18,.55), transparent); }
-  #hud::after  { bottom: 0; background: linear-gradient(to top, rgba(5,12,18,.60), transparent); }
+  #hud::before { top: 0; background: linear-gradient(to bottom, rgba(5,12,18,.45), transparent); }
+  #hud::after  { bottom: 0; background: linear-gradient(to top, rgba(5,12,18,.42), transparent); }
   #hud > * { position: relative; }
   #hud .hlbl, #hud .hnum, #stageName, #shellPct, #meltRate {
     text-shadow: 0 1px 10px rgba(3,8,12,.85), 0 0 2px rgba(3,8,12,.7);
@@ -219,6 +219,18 @@
     text-shadow: 0 0 18px rgba(0,0,0,.9);
   }
   #warn.on { opacity: .95; }
+  /* The tutorial's voice. Sits low and centre, out of the way of the gauge,
+     and never covers the road you are being told to look at. */
+  #teach {
+    position: absolute; left: 50%; bottom: 21%; transform: translateX(-50%);
+    max-width: min(56ch, 78vw); text-align: center;
+    font-family: var(--serif); font-size: clamp(16px, 2vw, 22px); line-height: 1.5;
+    color: var(--bone); opacity: 0; transition: opacity .45s ease;
+    text-shadow: 0 2px 18px rgba(3,8,12,.95), 0 0 3px rgba(3,8,12,.9);
+    pointer-events: none;
+  }
+  #teach.on { opacity: 1; }
+
   #edge {
     position: fixed; inset: 0; z-index: 5; pointer-events: none;
     box-shadow: inset 0 0 90px rgba(212,96,58,0); transition: box-shadow .3s;
@@ -328,16 +340,17 @@
     <div id="meltRate">stable</div>
   </div>
   <div id="warn"></div>
+  <div id="teach"></div>
 </div>
 
 <!-- ---------------------------------------------------------------- title -->
 <div class="screen" id="scr-title">
   <div class="col">
-    <div class="eyebrow">A bearer&rsquo;s descent</div>
+    <div class="eyebrow">A bearer&rsquo;s climb</div>
     <h1 class="wordmark">FIRN</h1>
-    <div class="sub">You roll a sleeping thing, sealed in ice, down out of the cold. Every second of speed melts the only thing keeping it asleep.</div>
+    <div class="sub">You carry a sleeping thing, sealed in ice, up and away from a thawing world. Every second of speed melts the only thing keeping it asleep.</div>
     <ul class="menu" id="titleMenu">
-      <li data-act="begin"><span class="idx">i</span><span>Begin the descent</span></li>
+      <li data-act="begin"><span class="idx">i</span><span>Begin the climb</span></li>
       <li data-act="route"><span class="idx">ii</span><span>The route</span><span class="tail" id="routeTail"></span></li>
       <li data-act="settings"><span class="idx">iii</span><span>Settings</span></li>
       <li data-act="rite"><span class="idx">iv</span><span>The rite</span></li>
@@ -351,10 +364,10 @@
 <div class="screen hide" id="scr-route">
   <div class="col">
     <div class="eyebrow">The route</div>
-    <h2 class="head">Down, into warmth</h2>
+    <h2 class="head">Up, out of the thaw</h2>
     <div class="rule"></div>
     <ul class="menu" id="routeMenu"></ul>
-    <div class="hint"><kbd>Enter</kbd> descend &nbsp;·&nbsp; <kbd>Esc</kbd> back</div>
+    <div class="hint"><kbd>Enter</kbd> climb &nbsp;·&nbsp; <kbd>Esc</kbd> back</div>
   </div>
 </div>
 
@@ -379,6 +392,7 @@
     <p class="body"><b>Speed is heat.</b> Friction and sunlight melt the shell, and the shell is the only thing keeping the thing inside asleep. Watch it clear: when you can see what you are carrying, you have gone too far.</p>
     <p class="body"><b>A thinner shell is smaller.</b> Some gates admit only a ball that has melted down — so you may spend shell deliberately to buy a shortcut. <span class="ember">But a grate that held you at full thickness will not hold you when you are thin.</span></p>
     <p class="body">When the shell is gone you keep rolling, bare and quick, one hard blow from waking it. Reach the ring and set it down.</p>
+    <p class="body"><b>The road climbs.</b> Warm air sits low, so every stage is partly a matter of getting above it — but the thaw is rising behind you faster than you are climbing, and each stage begins in worse air than the last.</p>
     <div class="rule"></div>
     <div class="eyebrow">Credits</div>
     <p class="body" style="margin-top:10px">Music by <b>Kevin MacLeod</b> (incompetech.com), licensed under Creative Commons BY&nbsp;4.0 &mdash; &ldquo;Lightless Dawn&rdquo;, &ldquo;Ice Flow&rdquo;, &ldquo;Frozen Star&rdquo;, &ldquo;Impact Lento&rdquo;. Every other sound is synthesised at runtime.</p>

@@ -21,6 +21,7 @@ let sim = null, stageIndex = 0;
 let mode = 'attract';          // attract | ready | play | paused | over
 let readyT = 0;
 let hitstopT = 0;
+let taughtAt = -1;      // index of the tutorial line currently showing
 let attractPilot = null;
 let last = 0, lastRender = 0, raf = 0;
 
@@ -82,6 +83,8 @@ function startStage(i) {
 
 function restart() {
   hitstopT = 0;
+  taughtAt = -1;
+  $('teach').classList.remove('on');
   const stage = STAGES[stageIndex];
   sim = SIM.createSim(stage, { seed: (store.bearer * 7919 + stageIndex * 104729) >>> 0 });
   view.snapCamera(sim);
@@ -207,6 +210,22 @@ function updateHud() {
   $('edge').classList.toggle('on', shell <= 0 || m > 0.06);
 
   $('shellBox').classList.toggle('hide', !settings.showMeter);
+
+  // Guided prompts fire on PROGRESS, not on a timer, so a line arrives when the
+  // thing it describes is in front of you however long you took to get there.
+  const teach = sim.stage.teach;
+  const el = $('teach');
+  if (teach) {
+    let i = -1;
+    for (let k = 0; k < teach.length; k++) if (sim.ball.p.z >= teach[k].z) i = k;
+    if (i !== taughtAt) {
+      taughtAt = i;
+      if (i >= 0) { el.textContent = teach[i].text; el.classList.add('on'); }
+      else el.classList.remove('on');
+    }
+  } else if (el.classList.contains('on')) {
+    el.classList.remove('on');
+  }
   $('speed').style.opacity = settings.speedRush ? Math.max(0, (view.speedFrac || 0) - 0.45) * 1.1 : 0;
   $('timeVal').parentElement.style.visibility = settings.showTimer ? '' : 'hidden';
 }

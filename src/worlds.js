@@ -98,7 +98,7 @@ export const WORLDS = {
     fog: 0x8f9a9c, fogNear: 34, fogFar: 340,
     key: 0xe8e4da, keyPower: 1.8, hemi: 0x7d8688, ambient: 2.0,
     deck: { stone: 0x5f625e, stone2: 0x515450, rail: 0x3a3c39 },
-    ground: 'rock', groundColor: 0x4a4a44,
+    ground: 'rock', groundColor: 0x74786f,
     ridges: [[330, 90, 0x3a3f40, 0x8d9698]],
     ceiling: null,
     fall: 'sleet', fallCount: 1400, fallSize: 0.24, fallOpacity: 0.3,
@@ -194,7 +194,7 @@ function rockTexture(hot) {
   const cv = document.createElement('canvas');
   cv.width = cv.height = N;
   const g = cv.getContext('2d');
-  g.fillStyle = hot ? '#241f1b' : '#4a4a44'; g.fillRect(0, 0, N, N);
+  g.fillStyle = hot ? '#241f1b' : '#6f7369'; g.fillRect(0, 0, N, N);
   const rnd = mulberry32(7717);
   for (let i = 0; i < 900; i++) {
     const v = Math.floor(rnd() * 40);
@@ -377,11 +377,13 @@ export function buildGround(world) {
     g.add(up.seal(), dn.seal());
 
   } else {  // 'rock'
-    const hot = world.band > 0.8;
+    // Volcanic, not merely low. The Thaw sits at band 1.0 but is wet grey
+    // rock and meltwater -- keying this on band gave it glowing fissures.
+    const hot = world.id === 'geothermal';
     g.add(plate(new THREE.MeshStandardMaterial({
       map: rockTexture(hot), color: world.groundColor, roughness: 0.95,
     })));
-    const mat = new THREE.MeshStandardMaterial({ color: hot ? 0x1c1815 : 0x40403a, roughness: 0.95, flatShading: true });
+    const mat = new THREE.MeshStandardMaterial({ color: hot ? 0x1c1815 : 0x63665e, roughness: 0.95, flatShading: true });
     const b = bank(ROCKG, mat, 460);
     for (let i = 0; i < 460; i++) {
       const a = rnd() * Math.PI * 2, r = 30 + rnd() * 760;

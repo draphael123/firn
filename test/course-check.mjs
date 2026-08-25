@@ -63,7 +63,7 @@ for (const st of STAGES) {
   const lm = landmarks(st);
   console.log(`\n${st.numeral}. ${st.name}   [${st.world}]  warmth ${st.warmth}`);
 
-  check('warmth rises along the descent', st.warmth > lastWarmth, `${lastWarmth} -> ${st.warmth}`);
+  check('warmth rises as the thaw follows you up', st.warmth > lastWarmth, `${lastWarmth} -> ${st.warmth}`);
   lastWarmth = st.warmth;
 
   const main = fly(st, st.waypoints, { cruise: 13, meltAt: st.meltAt, ...lm });
@@ -89,9 +89,19 @@ for (const st of STAGES) {
 
   if (st.altRoute) {
     const alt = fly(st, st.altRoute, { cruise: 13, ...lm });
-    console.log(`   alt   -> ${say(alt)}`);
+    console.log(`   alt   -> ${say(alt)}`
+      + (lm.gateZ !== undefined && alt.ev.gateShell !== null ? `  at gate line=${pct(alt.ev.gateShell)}` : ''));
     check('the detour is completable without melting', alt.state === 'won');
-    check('the detour never needed the gate', alt.shell > GATE_SHELL, `shell ${pct(alt.shell)}`);
+    if (lm.gateZ !== undefined) {
+      // Measured where the GATE is, not at the finish. On a long hot stage the
+      // detour melts below the threshold by the end simply from being out in
+      // the air that long -- which says nothing about whether it needed the
+      // gate. What matters is that it got PAST the gate line still too thick
+      // to have used it, which is what proves the way round is genuine.
+      check('the detour got past the gate line without melting down',
+        alt.ev.gateShell === null || alt.ev.gateShell > GATE_SHELL,
+        alt.ev.gateShell === null ? 'never crossed it' : `${pct(alt.ev.gateShell)} > ${pct(GATE_SHELL)}`);
+    }
     // The true margin is NOT measurable here: the pilot crawls while it melts
     // where a human dives the hot spot and leaves. Only assert neither is a trap.
     check('neither route strictly dominates', Math.abs(main.time - alt.time) < 12,

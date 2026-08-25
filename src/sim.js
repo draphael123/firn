@@ -152,9 +152,25 @@ export function prepareStage(def) {
   };
 }
 
-/** Ambient melt rate at a point: stage base warmth plus every heat source. */
+/**
+ * Ambient melt rate at a point: stage base warmth plus every heat source.
+ *
+ * THE CLIMB. Warm air sits low, so warmth falls with altitude: every stage is
+ * partly a matter of climbing out of the heat you are standing in. Meanwhile
+ * each stage's BASE warmth is higher than the last, because the thaw is rising
+ * behind you faster than you are climbing. You gain height and the heat follows.
+ *
+ * `warmFall` is the height, in metres, over which warmth decays by 1/e, measured
+ * from `warmY` (default: the spawn height). Omit it and there is no altitude
+ * term at all -- test stages rely on that, so a thin ball and a fat ball resting
+ * at different heights cannot skew a measurement.
+ */
 export function ambientAt(stage, x, y, z) {
   let q = stage.warmth;
+  if (stage.warmFall) {
+    const base = stage.warmY === undefined ? stage.spawn[1] : stage.warmY;
+    q *= Math.exp(-(y - base) / stage.warmFall);
+  }
   for (const h of stage.heat) {
     const dx = x - h.p[0], dy = y - h.p[1], dz = z - h.p[2];
     const d = Math.sqrt(dx * dx + dy * dy + dz * dz);

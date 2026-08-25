@@ -425,7 +425,7 @@ export class UI {
     };
     this.nextIndex = index + 1;
     let k = 1;
-    if (won && this.nextIndex < STAGES.length) add('next', roman(k++).toLowerCase(), `Descend to ${STAGES[this.nextIndex].name}`);
+    if (won && this.nextIndex < STAGES.length) add('next', roman(k++).toLowerCase(), `Climb to ${STAGES[this.nextIndex].name}`);
     add('retry', roman(k++).toLowerCase(), won ? 'Carry it again' : 'Take up the ice');
     add('route', roman(k++).toLowerCase(), 'The route');
     add('quit', roman(k++).toLowerCase(), 'Set it down');

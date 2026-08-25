@@ -1,6 +1,6 @@
 # FIRN
 
-**You roll a sleeping thing, sealed in ice, down out of the cold — and every second of speed melts the only thing keeping it asleep.**
+**You carry a sleeping thing, sealed in ice, up and away from a thawing world — and every second of speed melts the only thing keeping it asleep.**
 
 A tilt-the-stage roller in the Monkey Ball tradition, with one substitution: where
 Monkey Ball trades speed against control, FIRN trades speed against *containment*.
@@ -39,31 +39,42 @@ hard blow from waking it.
 
 **Failure is succession.** Each attempt is another named bearer in a long line.
 
-## Worlds
+## The climb
 
-Worlds are not skins — they are **bands of the descent**. The route runs down out
-of the cold into warmth, so each world sits lower and hotter than the last, and a
-world's `band` drives air, light and ground together. Stage difficulty, the melt
-economy and the look therefore move in the same direction by construction rather
-than being tuned into agreement.
+The route runs **up**. Every stage begins at the altitude the last one reached,
+so the seven read as one mountain climbed in pieces rather than seven tracks.
 
-| | Stage | World | Character |
-|---|---|---|---|
-| I | The Cold Stair | Névé | Wind-scoured snowfield, sastrugi, whiteout |
-| II | The Icefall | Icefall | Broken blue blocks and crevasses; a gap you must carry speed into |
-| III | The Thaw Gate | Frozen Sea | The shelf: cracked sheet ice, floes, causeway on piers |
-| IV | The Cathedral | Cathedral | Enclosed. A vault, stalactites, meltwater pooling warm on the road |
-| V | The Grate Run | Geothermal | Black rock, fumaroles, ash haze — where the warmth comes from |
+The engine of that is a deliberate contradiction: warmth **falls with altitude**
+inside a stage — you are always climbing out of the air you are standing in —
+while each stage's base warmth is **higher than the last**, because the thaw is
+rising behind you faster than you are climbing. You gain height; the heat
+follows. By the summit the warmest air in the game is standing on the coldest
+ground, and there is meltwater on the névé that has no business being there.
 
-Only the causeway tilts. Everything a world provides stays level, so the horizon
-is the fixed reference the tilt is read against. Adding a world is data plus, at
-most, one ground builder.
+Uphill ramps are the climb's own mechanic: their slope eats into the tilt you
+have available, so you must carry speed into a rise or stall halfway up.
+
+| | Stage | World | Altitude | Teaches |
+|---|---|---|---|---|
+| 0 | The Threshold | Thaw | 0 m | *guided tutorial* — tilt, braking, bends, rises, heat, the gate |
+| I | The Kiln Road | Geothermal | 340 m | climbing, and steering wide of the vents |
+| II | The Cathedral | Cathedral | 720 m | the gate, enclosed |
+| III | The Thaw Gate | Frozen Sea | 1,150 m | the gate against a long detour |
+| IV | The Weighing | Frozen Sea | 1,560 m | the grate — being *too thin* |
+| V | The Icefall | Icefall | 2,080 m | momentum, and a crevasse you must carry speed into |
+| VI | The Cold Stair | Névé | 2,610 m | gate **and** grate, with barely road enough between |
+
+Worlds are not skins — they are bands of the climb, and a world's position drives
+sky, fog, light, ground, deck stone and precipitation together. Only the causeway
+tilts; everything a world provides stays level, so the horizon is the fixed
+reference the tilt is read against. Adding a world is data plus, at most, one
+ground builder.
 
 ## Structure
 
 ```
 src/sim.js        physics, melt, wobble — no three.js, runs headless
-src/stages.js     the five stages, as data
+src/stages.js     the seven stages, as data (plate / ramp / arc / chicane)
 src/worlds.js     world descriptors, grounds, ridgelines, deck surfaces
 src/props.js      cairns, handline, piers, wrecks, vents — all instanced
 src/ball.js       the ice shell, the frost, and the passenger
@@ -71,7 +82,7 @@ src/autopilot.js  waypoint pilot: verifies routes, drives the title screen
 src/render.js     three.js presentation
 src/ui.js         menus, settings, persistence
 src/main.js       boot, input, frame loop
-test/             invariants, course verification, stall probe
+test/             invariants, course verification, stall + gap probes
 ```
 
 ### Why the ball has four layers

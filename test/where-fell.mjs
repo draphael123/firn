@@ -1,26 +1,47 @@
+/* Where does a route leave the road?
+ *
+ * Reports the last grounded point and the first airborne point for every route
+ * that fails, which is almost always enough to name the hole -- a plate that
+ * stops short, a kerb with a gap, or waypoints that cut a corner through one.
+ *
+ *   node test/where-fell.mjs            all failing routes
+ *   node test/where-fell.mjs icefall    just that stage
+ */
 import * as S from '../src/sim.js';
 import { STAGES } from '../src/stages.js';
 import { autopilot } from '../src/autopilot.js';
 
-const which = process.argv[2] || 'thaw';
-const route = process.argv[3] || 'altRoute';
-const st = STAGES.find((s) => s.id === which);
-const sim = S.createSim(st, { seed: 1 });
-const pilot = autopilot(st[route], { cruise: 11 });
+const only = process.argv[2];
 
-let last = [];
-while (sim.state === 'run' && sim.time < 150) {
-  sim.step(1 / 120, pilot(sim));
-  const b = sim.ball;
-  last.push([sim.time, b.p.x, b.p.y, b.p.z, b.grounded]);
-  if (last.length > 260) last.shift();
+function probe(stage, routeName) {
+  const wps = stage[routeName];
+  if (!wps) return null;
+  const sim = S.createSim(stage, { seed: 1 });
+  const pilot = autopilot(wps, { cruise: 13, meltAt: routeName === 'waypoints' ? stage.meltAt : undefined });
+  let lastGround = null, firstAir = null;
+  while (sim.state === 'run' && sim.time < 150) {
+    sim.step(1 / 120, pilot(sim));
+    const b = sim.ball;
+    if (b.grounded) { lastGround = { t: sim.time, x: b.p.x, y: b.p.y, z: b.p.z }; firstAir = null; }
+    else if (!firstAir) firstAir = { t: sim.time, x: b.p.x, y: b.p.y, z: b.p.z };
+  }
+  return { state: sim.state, reason: sim.reason, t: sim.time, lastGround, firstAir };
 }
-console.log(`${st.name} / ${route} -> ${sim.state}${sim.reason ? '/' + sim.reason : ''} at t=${sim.time.toFixed(2)}`);
-console.log('last airborne-onward samples (t, x, y, z, grounded):');
-// find where it last touched anything
-let i = last.length - 1;
-while (i > 0 && !last[i][4]) i--;
-for (let k = Math.max(0, i - 4); k < last.length; k += 12) {
-  const [t, x, y, z, g] = last[k];
-  console.log(`  t=${t.toFixed(2)}  x=${x.toFixed(1).padStart(7)}  y=${y.toFixed(1).padStart(7)}  z=${z.toFixed(1).padStart(7)}  ${g ? 'ground' : 'air'}`);
+
+const f = (p) => (p ? `(${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)})` : 'n/a');
+
+for (const st of STAGES) {
+  if (only && st.id !== only) continue;
+  for (const route of ['waypoints', 'altRoute']) {
+    const r = probe(st, route);
+    if (!r) continue;
+    const bad = r.state !== 'won';
+    if (only || bad) {
+      console.log(`${st.numeral.padEnd(3)} ${st.id.padEnd(10)} ${route.padEnd(10)} ` +
+        `-> ${(r.state + (r.reason ? '/' + r.reason : '')).padEnd(11)} t=${r.t.toFixed(1)}s`);
+      if (bad) {
+        console.log(`      left the road at ${f(r.lastGround)}  ->  airborne from ${f(r.firstAir)}`);
+      }
+    }
+  }
 }
