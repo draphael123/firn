@@ -3,7 +3,15 @@
 <head>
 <meta charset="utf-8">
 <title>FIRN</title>
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#05090c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FIRN">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="description" content="Carry a sleeping thing, sealed in ice, up out of a thawing world. Every second of speed melts the only thing keeping it asleep.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -23,6 +31,12 @@
     --serif:  'Instrument Serif', 'Iowan Old Style', Georgia, serif;
     --mono:   'IBM Plex Mono', ui-monospace, Consolas, 'DejaVu Sans Mono', monospace;
     --pad:    clamp(26px, 6.5vw, 116px);
+    /* Phones put rounded corners, notches and a home indicator over the edges.
+     * Every fixed corner in this file offsets by these or it lands under one. */
+    --safe-t: env(safe-area-inset-top, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-l: env(safe-area-inset-left, 0px);
+    --safe-r: env(safe-area-inset-right, 0px);
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -233,6 +247,61 @@
   }
 
   /* ------------------------------------------------------------ HUD */
+
+  /* ---------------------------------------------------------------- touch */
+
+  /* A FLOATING stick: it appears where the thumb lands rather than in a fixed
+   * corner. On a phone held two-handed there is no one place the thumb reaches
+   * comfortably, and a fixed pad means constantly looking down to find it.
+   * Hidden entirely until a real touch happens, so a laptop with a touchscreen
+   * never grows controls it did not ask for. */
+  #stick {
+    position: fixed; z-index: 7; pointer-events: none;
+    width: 148px; height: 148px; margin: -74px 0 0 -74px;
+    border-radius: 50%; opacity: 0;
+    border: 1px solid rgba(168,200,212,.30);
+    background: radial-gradient(circle, rgba(168,200,212,.10), rgba(168,200,212,.02) 70%, transparent 72%);
+    transition: opacity .16s ease;
+  }
+  #stick.on { opacity: 1; }
+  #stick i {
+    position: absolute; left: 50%; top: 50%;
+    width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%;
+    background: rgba(232,240,243,.20);
+    border: 1px solid rgba(232,240,243,.5);
+    transform: translate(var(--kx, 0px), var(--ky, 0px));
+  }
+  /* the ring's own axis marks, so the neutral point is readable at a glance */
+  #stick::after {
+    content: ''; position: absolute; inset: 46% 8% auto 8%; height: 1px;
+    background: rgba(168,200,212,.16);
+  }
+
+  #touchPause {
+    position: fixed; z-index: 8; display: none;
+    top: calc(16px + var(--safe-t)); right: calc(16px + var(--safe-r));
+    width: 46px; height: 46px; border-radius: 50%;
+    border: 1px solid var(--line2); background: rgba(5,12,18,.5);
+    color: var(--ice); align-items: center; justify-content: center;
+    backdrop-filter: blur(3px);
+  }
+  #touchPause::before {
+    content: ''; width: 12px; height: 14px;
+    border-left: 3px solid currentColor; border-right: 3px solid currentColor;
+  }
+  body.touch #touchPause.on { display: flex; }
+
+  /* Menus: fingers need a bigger target than a mouse does. */
+  body.touch .menu li { padding: 15px 0 15px 22px; }
+  body.touch .row     { padding: 13px 0 13px 22px; }
+
+  #rotate {
+    position: fixed; inset: 0; z-index: 60; display: none;
+    align-items: center; justify-content: center; text-align: center;
+    background: var(--ink); color: var(--ice); padding: 10vw;
+    font-size: 13px; letter-spacing: .16em; text-transform: uppercase; line-height: 2.1;
+  }
+
   #hud { position: fixed; inset: 0; z-index: 6; pointer-events: none; }
   /* The world can be a bright ice field, so the HUD cannot rely on the scene
      being dark. Corner scrims plus a shadow keep it legible over anything. */
@@ -245,9 +314,9 @@
   #hud .hlbl, #hud .hnum, #stageName, #shellPct, #meltRate {
     text-shadow: 0 1px 10px rgba(3,8,12,.85), 0 0 2px rgba(3,8,12,.7);
   }
-  #hud .tl { position: absolute; top: 22px; left: var(--pad); }
-  #hud .tr { position: absolute; top: 22px; right: var(--pad); text-align: right; }
-  #hud .bl { position: absolute; bottom: 30px; left: var(--pad); width: min(330px, 44vw); }
+  #hud .tl { position: absolute; top: calc(22px + var(--safe-t)); left: calc(var(--pad) + var(--safe-l)); }
+  #hud .tr { position: absolute; top: calc(22px + var(--safe-t)); right: calc(var(--pad) + var(--safe-r)); text-align: right; }
+  #hud .bl { position: absolute; bottom: calc(30px + var(--safe-b)); left: calc(var(--pad) + var(--safe-l)); width: min(330px, 44vw); }
   .hnum {
     font-family: var(--serif); font-size: 40px; line-height: 1;
     font-variant-numeric: tabular-nums; color: var(--bone);
@@ -398,6 +467,35 @@
     #hud .bl { width: 62vw; }
     .stat .k { min-width: 110px; }
   }
+
+  /* ------------------------------------------------------------------------
+   * Overrides. These live at the END on purpose: a media query adds no
+   * specificity, so a block placed above the rule it means to override simply
+   * loses on source order. Both of these were written higher up and did
+   * nothing at all until they were moved down here.
+   * --------------------------------------------------------------------- */
+
+  /* ------------------------------------------------------- small screens */
+  @media (max-width: 760px), (max-height: 520px) {
+    :root { --pad: clamp(16px, 4.5vw, 40px); }
+    .wordmark { font-size: clamp(58px, 17vw, 128px); }
+    .sub { font-size: 12px; max-width: 62vw; }
+    .eyebrow { font-size: 9px; }
+    #hud .bl { width: min(230px, 52vw); bottom: calc(16px + var(--safe-b)); }
+    #hud .tl, #hud .tr { top: calc(12px + var(--safe-t)); }
+    .hnum { font-size: 26px; }
+    .menu li { font-size: 15px; }
+    #hud::before, #hud::after { height: 96px; }
+  }
+
+  /* Portrait on a phone: playable, but the game is built wide. Say so. */
+  @media (max-aspect-ratio: 4/5) and (pointer: coarse) {
+    #rotate { display: flex; }
+  }
+
+  /* The on-screen pause button lands exactly where the elapsed time is, so on
+   * touch the readout steps aside for it. */
+  body.touch #hud .tr { right: calc(var(--pad) + var(--safe-r) + 52px); }
 </style>
 </head>
 <body>
@@ -527,6 +625,10 @@
     <ul class="menu" id="resultMenu"></ul>
   </div>
 </div>
+
+<div id="stick"><i></i></div>
+<button id="touchPause" aria-label="Pause"></button>
+<div id="rotate">Turn your device sideways<br>to carry the ice</div>
 
 <div id="fade"></div>
 <div id="boot">Loading the ice&hellip;</div>

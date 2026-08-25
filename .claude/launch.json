@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "firn", "runtimeExecutable": "python", "runtimeArgs": ["serve.py"], "port": 5826 }
+  ]
+}

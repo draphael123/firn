@@ -427,3 +427,115 @@ export function buildGround(world) {
 
   return g;
 }
+
+// -------------------------------------------------------------- the backdrop
+
+/**
+ * Everything in the distance that is not ground.
+ *
+ * The rock field alone reads as scatter: same silhouette, same size, same
+ * height, so distance is carried by fog and nothing else. Two things fix that,
+ * and only one of them is scenery.
+ *
+ * SISTER CAUSEWAYS are the important one. This world has a premise -- bearers
+ * carrying ice up a built road -- and the player only ever sees the one span
+ * under their own ball, so the rite reads as a single corridor rather than
+ * something old and enormous. Other roads crossing the fog at other heights,
+ * going somewhere you are not, say more about the setting than any amount of
+ * terrain. They also give real parallax: verticals at known heights are what
+ * let the eye judge distance.
+ *
+ * The rest is height variance -- spires and monoliths -- because a field whose
+ * pieces are all one size has no scale in it.
+ *
+ * Everything here is instanced and never collides: it is strictly backdrop.
+ */
+export function buildBackdrop(world, detail = 1) {
+  const g = new THREE.Group();
+  if (world.ground === 'cavern') return g;      // enclosed: there is no distance
+  const rnd = mulberry32(world.id.length * 7717 + 43);
+  const q = [0.45, 1.0, 1.6][detail] ?? 1.0;
+  /* Nothing may stand inside this. A stage runs to roughly 270 long and the
+   * camera sits behind and above the ball, so anything nearer than this is not
+   * backdrop -- it is a dark column swiping through the middle of play. */
+  const KEEP_OUT = 300;
+  const icy = world.band < 0.75;
+
+  const deckMat = new THREE.MeshStandardMaterial({
+    color: world.deck.stone, roughness: 0.92, flatShading: true,
+  });
+  const pierMat = new THREE.MeshStandardMaterial({
+    color: world.deck.rail, roughness: 0.95, flatShading: true,
+  });
+  const stoneMat = new THREE.MeshStandardMaterial({
+    color: icy ? world.groundColor : 0x5b5e57, roughness: 0.9, flatShading: true,
+  });
+
+  const BOX = new THREE.BoxGeometry(1, 1, 1);
+  const SPIRE = new THREE.ConeGeometry(1, 1, 5);
+
+  const spans = Math.round(5 * q);
+  const decks = bank(BOX, deckMat, spans * 26 + 8);
+  const piers = bank(BOX, pierMat, spans * 26 + 8);
+
+  for (let s = 0; s < spans; s++) {
+    // far enough out to be scenery, spread so they never line up
+    const bear = rnd() * Math.PI * 2;
+    const dist = KEEP_OUT + 40 + rnd() * 340;
+    const cx = Math.cos(bear) * dist, cz = Math.sin(bear) * dist;
+    const run = rnd() * Math.PI * 2;                  // the way the road heads
+    const dx = Math.cos(run), dz = Math.sin(run);
+    const y = GROUND_Y + 30 + rnd() * 120;
+    const w = 7 + rnd() * 9;
+    const segs = 12 + Math.floor(rnd() * 12);
+    const segLen = 16 + rnd() * 14;
+    // a slack curve, so it is a road and not a ruler
+    const bend = (rnd() - 0.5) * 0.02;
+    let a = 0;
+    for (let i = 0; i < segs; i++) {
+      const t = i - segs / 2;
+      a += bend;
+      const px = cx + dx * t * segLen - dz * a * segLen * t * 0.5;
+      const pz = cz + dz * t * segLen + dx * a * segLen * t * 0.5;
+      const sag = Math.cos((i / segs - 0.5) * 3.1) * 6;      // it dips in the middle
+      decks.put(px, y - sag, pz, w, 2.4, segLen * 1.04, 0, run + a * t, 0);
+      if (i % 3 === 0) {
+        const h = (y - sag) - GROUND_Y;
+        piers.put(px, GROUND_Y + h / 2, pz, w * 0.30, h, w * 0.30);
+      }
+    }
+  }
+  g.add(decks.seal(), piers.seal());
+
+  /* Verticals. Strongly varied heights on purpose -- one tall thing next to a
+   * short one is what gives a field any sense of scale at all. */
+  const nSpire = Math.round(150 * q);
+  const spires = bank(SPIRE, stoneMat, nSpire + 4);
+  for (let i = 0; i < nSpire; i++) {
+    const a = rnd() * Math.PI * 2, r = KEEP_OUT + rnd() * 640;
+    const tall = rnd() < 0.22;
+    const h = tall ? 60 + rnd() * 130 : 12 + rnd() * 40;
+    const w = h * (tall ? 0.10 + rnd() * 0.10 : 0.28 + rnd() * 0.4);
+    spires.put(Math.cos(a) * r, GROUND_Y + h / 2, Math.sin(a) * r, w, h, w,
+      (rnd() - 0.5) * 0.16, rnd() * 3, (rnd() - 0.5) * 0.16);
+  }
+  g.add(spires.seal());
+
+  // Monoliths: squared, clustered, obviously RAISED rather than grown. They
+  // are the other half of the same argument as the causeways.
+  const nMono = Math.round(34 * q);
+  const monos = bank(BOX, pierMat, nMono * 4 + 4);
+  for (let i = 0; i < nMono; i++) {
+    const a = rnd() * Math.PI * 2, r = KEEP_OUT + 60 + rnd() * 420;
+    const cx = Math.cos(a) * r, cz = Math.sin(a) * r;
+    const n = 1 + Math.floor(rnd() * 3);
+    for (let k = 0; k < n; k++) {
+      const h = 16 + rnd() * 46;
+      monos.put(cx + (rnd() - 0.5) * 26, GROUND_Y + h / 2, cz + (rnd() - 0.5) * 26,
+        2.5 + rnd() * 4, h, 2.5 + rnd() * 4, (rnd() - 0.5) * 0.10, rnd() * 3, (rnd() - 0.5) * 0.10);
+    }
+  }
+  g.add(monos.seal());
+
+  return g;
+}

@@ -20,7 +20,7 @@ import { buildBall, updateBall, ballImpact } from './ball.js';
 import { Director } from './camera.js';
 import { buildStageProps, buildWorldProps, buildVent, stepSteam,
          buildFlock, stepFlock, softSprite } from './props.js';
-import { worldOf, gradeFor, buildGround, ridgeRing, deckTexture, GROUND_Y } from './worlds.js';
+import { worldOf, gradeFor, buildGround, buildBackdrop, ridgeRing, deckTexture, GROUND_Y } from './worlds.js';
 
 const C = {
   fog:    0x0d151a,
@@ -286,6 +286,7 @@ export class View {
     this.haze.length = 0;
 
     this.far.add(buildGround(W));
+    this.far.add(buildBackdrop(W, this.settings.detail ?? 1));
     if (W.ridges) {
       let k = 0;
       for (const [radius, height, base, peak] of W.ridges) {
@@ -878,7 +879,18 @@ export class View {
   }
 
   resize(w, h, scale) {
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2) * scale);
+    /* Phones report device pixel ratios of 3 and up. Honouring even 2 of that
+     * means shading four times as many pixels as the panel can resolve at arm's
+     * length, which is where a handset's frame budget actually goes. Cap it by
+     * how many pixels we would end up pushing rather than by the ratio alone,
+     * so a small dense screen and a large one both land somewhere sane. */
+    const dpr = window.devicePixelRatio || 1;
+    const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    const cap = coarse ? 1.5 : 2;
+    const budget = coarse ? 2.6e6 : 6.0e6;            // pixels actually rendered
+    let pr = Math.min(dpr, cap) * scale;
+    if (w * h * pr * pr > budget) pr = Math.sqrt(budget / (w * h));
+    this.renderer.setPixelRatio(Math.max(0.55, pr));
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();

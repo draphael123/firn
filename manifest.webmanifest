@@ -1,0 +1,16 @@
+{
+  "name": "FIRN",
+  "short_name": "FIRN",
+  "description": "Carry a sleeping thing, sealed in ice, up out of a thawing world.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#05090c",
+  "theme_color": "#05090c",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

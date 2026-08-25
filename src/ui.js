@@ -43,6 +43,7 @@ export const SETTINGS_SCHEMA = [
     { key: 'snow',       label: 'Snowfall',   values: [0, 1, 2], names: ['Off', 'Light', 'Heavy'], def: 1 },
     { key: 'shadows',    label: 'Shadows',    bool: true, def: 1 },
     { key: 'resScale',   label: 'Resolution', values: [0.7, 0.85, 1.0], names: ['70%', '85%', '100%'], def: 2 },
+    { key: 'detail',     label: 'Scene detail', values: [0, 1, 2], names: ['Low', 'Normal', 'High'], def: 1 },
     // Monitors vary enormously and this is a deliberately dark game; without a
     // brightness control it is unplayable on plenty of perfectly good screens.
     { key: 'exposure',   label: 'Brightness', values: [1.6, 1.85, 2.1, 2.4, 2.7], names: ['Dim', 'Low', 'Normal', 'Bright', 'Brightest'], def: 2 },
@@ -88,6 +89,31 @@ export function resolveSettings(idx) {
   return s;
 }
 
+/**
+ * Defaults for a phone, applied ONLY when there is nothing saved yet.
+ *
+ * The desktop defaults ask a handset for a 2x pixel ratio, high scene detail
+ * and shadow maps, which is a slideshow on anything mid-range. Overriding on
+ * every boot instead of only the first would quietly undo a player's own
+ * choices every time they opened the game, so this runs once and then the
+ * saved settings win like anyone else's.
+ */
+function mobileDefaults(idx) {
+  idx.detail = 0;            // Low
+  idx.resScale = 0;          // 70%
+  idx.shadows = 0;           // off -- the single biggest cost on a tiler
+  idx.snow = 1;              // Light
+  idx.iceQuality = 0;        // Plain: transmission needs a second scene pass
+  return idx;
+}
+
+/** Coarse pointer AND a small screen. A touchscreen laptop is not a phone. */
+export function looksLikeAPhone() {
+  const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  const small = Math.min(window.screen?.width || 9999, window.screen?.height || 9999) <= 820;
+  return !!(coarse && small);
+}
+
 export class Store {
   constructor() {
     this.idx = defaultIndices();
@@ -99,7 +125,7 @@ export class Store {
   load() {
     try {
       const raw = localStorage.getItem(LS);
-      if (!raw) return;
+      if (!raw) { if (looksLikeAPhone()) mobileDefaults(this.idx); return; }
       const d = JSON.parse(raw);
       Object.assign(this.idx, d.idx || {});
       this.best = d.best || {};

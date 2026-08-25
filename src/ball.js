@@ -21,7 +21,12 @@ import * as THREE from '../vendor/three.module.js';
 import { T, radiusFor, mulberry32 } from './sim.js';
 
 const ICE = 0xdbeef5;
-const SLEEPER = 0x141009;
+/* The passenger was 0x141009 -- near black -- because it was designed as a
+ * silhouette you only ever glimpse. Seen through pale ice that is not a
+ * creature, it is a void. It is fur now, warm against the blue of the shell,
+ * with a paler muzzle and belly so the SHAPE reads and not just the mass. */
+const SLEEPER = 0x8a6236;
+const SLEEPER_PALE = 0xd8c39d;
 const GOLD = 0xc9a961;
 
 /** Blotchy frost, as an alpha map. Patches are what make the spin visible. */
@@ -33,7 +38,7 @@ function makeRimeTexture() {
   g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
   const rnd = mulberry32(4211);
   g.fillStyle = '#fff';
-  for (let i = 0; i < 260; i++) {
+  for (let i = 0; i < 150; i++) {
     const x = rnd() * W, y = rnd() * H;
     const r = 6 + rnd() * 34;
     g.beginPath();
@@ -44,20 +49,33 @@ function makeRimeTexture() {
       k ? g.lineTo(px, py) : g.moveTo(px, py);
     }
     g.closePath();
-    g.globalAlpha = 0.5 + rnd() * 0.5;
+    g.globalAlpha = 0.34 + rnd() * 0.42;
     g.fill();
   }
   // a few clear channels, so the frost never becomes a uniform coat
   g.globalCompositeOperation = 'destination-out';
   g.globalAlpha = 1;
   g.lineCap = 'round';
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 34; i++) {
     g.beginPath();
     let x = rnd() * W, y = rnd() * H;
     g.moveTo(x, y);
     for (let k = 0; k < 5; k++) { x += (rnd() - 0.5) * 130; y += (rnd() - 0.5) * 90; g.lineTo(x, y); }
-    g.strokeStyle = '#fff'; g.lineWidth = 3 + rnd() * 12;
+    g.strokeStyle = '#fff'; g.lineWidth = 14 + rnd() * 30;
     g.stroke();
+  }
+  // and a handful of proper WINDOWS. Narrow channels still read as one coat
+  // from a distance, and the passenger is the thing this ball is carrying --
+  // there has to be somewhere you can always see it through.
+  for (let i = 0; i < 7; i++) {
+    const x = rnd() * W, y = 40 + rnd() * (H - 80);
+    const r = 30 + rnd() * 34;
+    const grd = g.createRadialGradient(x, y, 0, x, y, r);
+    grd.addColorStop(0, 'rgba(255,255,255,1)');
+    grd.addColorStop(0.62, 'rgba(255,255,255,.85)');
+    grd.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grd;
+    g.beginPath(); g.arc(x, y, r, 0, 6.2832); g.fill();
   }
   const t = new THREE.CanvasTexture(cv);
   t.colorSpace = THREE.SRGBColorSpace;   // unflagged canvas textures render washed
@@ -106,7 +124,7 @@ function makeCrackTexture() {
  * inside your ball starts looking out of it. Nothing else in the game says
  * "you are running out" as fast, and it costs two spheres and a scale.
  */
-function makeSleeper(mat, eyeMat) {
+function makeSleeper(mat, eyeMat, pale) {
   const g = new THREE.Group();
   const ico = (d) => new THREE.IcosahedronGeometry(1, d);
 
@@ -114,7 +132,7 @@ function makeSleeper(mat, eyeMat) {
   body.scale.set(1.0, 0.82, 1.18);
   g.add(body);
 
-  const haunch = new THREE.Mesh(ico(1), mat);
+  const haunch = new THREE.Mesh(ico(1), pale);
   haunch.scale.set(0.82, 0.72, 0.72);
   haunch.position.set(0, -0.18, -0.72);
   g.add(haunch);
@@ -123,7 +141,7 @@ function makeSleeper(mat, eyeMat) {
   const skull = new THREE.Mesh(ico(2), mat);
   skull.scale.setScalar(0.58);
   head.add(skull);
-  const snout = new THREE.Mesh(ico(1), mat);
+  const snout = new THREE.Mesh(ico(1), pale);
   snout.scale.set(0.30, 0.26, 0.46);
   snout.position.set(0, -0.16, 0.56);
   head.add(snout);
@@ -146,7 +164,7 @@ function makeSleeper(mat, eyeMat) {
   g.add(head);
 
   for (const sx of [-1, 1]) {                 // forelimbs tucked under the chin
-    const limb = new THREE.Mesh(ico(1), mat);
+    const limb = new THREE.Mesh(ico(1), pale);
     limb.scale.set(0.26, 0.24, 0.62);
     limb.position.set(sx * 0.52, -0.42, 0.44);
     limb.rotation.set(0.2, sx * -0.22, sx * 0.34);
@@ -156,7 +174,7 @@ function makeSleeper(mat, eyeMat) {
   // the tail, curled round the flank -- three segments is enough to read
   for (let i = 0; i < 4; i++) {
     const t = i / 3;
-    const seg = new THREE.Mesh(ico(1), mat);
+    const seg = new THREE.Mesh(ico(1), i === 3 ? pale : mat);
     const r = 0.30 - t * 0.15;
     seg.scale.set(r, r, r * 1.25);
     const a = 0.6 + t * 2.1;
@@ -165,6 +183,26 @@ function makeSleeper(mat, eyeMat) {
   }
 
   return { group: g, head, eyes, body };
+}
+
+/* Nose-to-tail the sleeper reaches about 1.5x its own unit scale, so that is
+ * what turns a wanted radius into a scale factor. */
+const SLEEPER_BOUND = 1.5;
+const SLEEPER_LAYER = 1;
+
+/**
+ * How big the passenger is inside a ball of radius r.
+ *
+ * A FIXED size is the honest way to show melting -- the ice closes in on
+ * something that never changes -- but the ball is 2.5x wider full than empty,
+ * so a passenger sized to the empty ball is a quarter of the full one and the
+ * game reads as a plain marble for the whole first stage. It takes 45% of the
+ * shell's growth instead: big enough to be the thing you are looking at, while
+ * the ICE THICKNESS around it still collapses from 0.19 to nothing as you melt,
+ * which is the read that actually matters.
+ */
+function sleeperScale(r) {
+  return (T.R_MIN * 0.95 + (r - T.R_MIN) * 0.45) / SLEEPER_BOUND;
 }
 
 export function buildBall(settings) {
@@ -177,7 +215,7 @@ export function buildBall(settings) {
     : new THREE.MeshPhysicalMaterial({
         color: ICE, roughness: 0.12, metalness: 0.0,
         transmission: 1.0, thickness: 1.0, ior: 1.31,
-        clearcoat: 0.6, clearcoatRoughness: 0.2,
+        clearcoat: 0.35, clearcoatRoughness: 0.28,
         attenuationColor: new THREE.Color(0x7fb3c8), attenuationDistance: 1.6,
       });
   const ice = new THREE.Mesh(new THREE.SphereGeometry(1, 40, 26), iceMat);
@@ -208,30 +246,46 @@ export function buildBall(settings) {
     color: 0x2a1c08, roughness: 0.25, metalness: 0.1,
     emissive: new THREE.Color(0xffb642), emissiveIntensity: 0,
   });
+  const paleMat = new THREE.MeshStandardMaterial({
+    color: SLEEPER_PALE, roughness: 0.62, metalness: 0.04,
+    emissive: new THREE.Color(GOLD), emissiveIntensity: 0,
+  });
   const sleeperPivot = new THREE.Group();
-  const built = makeSleeper(sleeperMat, eyeMat);
+  const built = makeSleeper(sleeperMat, eyeMat, paleMat);
   const sleeper = built.group;
-  sleeper.scale.setScalar(T.R_MIN * 0.62);
+  sleeper.scale.setScalar(sleeperScale(T.R_MAX));
+  sleeper.traverse((o) => o.layers.enable(SLEEPER_LAYER));
   sleeperPivot.add(sleeper);
 
+  /* Lives inside the shell. Without it the passenger is lit only by the key,
+   * which at this scale means one bright cheek and an unreadable dark half.
+   *
+   * It sits on LAYER 1 and so does the passenger, because three.js lights only
+   * reach objects that share a layer. A plain point light in here lights the
+   * inner face of the ice as well and blows the whole ball out into a white
+   * bulb -- the passenger less visible than before, not more. */
   const glow = new THREE.PointLight(GOLD, 0, 8, 2);
+  const fill = new THREE.PointLight(0xfff0d8, 1.5, 2.2, 2);
+  fill.position.set(0.35, 0.5, 0.5);
+  fill.layers.set(SLEEPER_LAYER);
 
   // `shell` group carries the rolling rotation; the sleeper does NOT roll with
   // it -- a passenger tumbling with the shell reads as cargo, not a creature.
   const shell = new THREE.Group();
   shell.add(ice, rime, crack);
-  group.add(shell, sleeperPivot, glow);
+  group.add(shell, sleeperPivot, glow, fill);
 
   return {
-    group, shell, ice, rime, crack, sleeper, sleeperPivot, glow,
+    group, shell, ice, rime, crack, sleeper, sleeperPivot, glow, fill,
     head: built.head, eyes: built.eyes, body: built.body,
-    iceMat, rimeMat, crackMat, sleeperMat, eyeMat,
+    iceMat, rimeMat, crackMat, sleeperMat, eyeMat, paleMat,
     breath: 0,
     lean: new THREE.Vector3(),
     accel: new THREE.Vector3(),
     vPrev: new THREE.Vector3(),
     brace: 0,
     crackAmt: 0,
+    yaw: 0,
   };
 }
 
@@ -248,16 +302,21 @@ export function updateBall(B, sim, dt, settings) {
   B.shell.scale.setScalar(r);
 
   // ---- material response to shell
+  /* Thick ice used to mean LOW transmission, which is physically reasonable
+   * and made the passenger invisible for the entire first half of every stage.
+   * Thickness and attenuation carry "how much ice" now; transmission stays high
+   * enough to see through at any shell. */
   if (B.iceMat.thickness !== undefined) {
-    B.iceMat.transmission = 1 - shell * 0.55;
-    B.iceMat.roughness = 0.05 + shell * 0.30;
+    B.iceMat.transmission = 0.96 - shell * 0.12;
+    B.iceMat.roughness = 0.05 + shell * 0.22;
     B.iceMat.thickness = 0.15 + shell * 0.9;
     B.iceMat.attenuationDistance = 1.4 + (1 - shell) * 6;
   } else {
-    B.iceMat.opacity = 0.40 + shell * 0.55;
+    B.iceMat.opacity = 0.30 + shell * 0.34;
   }
-  // Frost IS the shell: it thins off the ball as you melt.
-  B.rimeMat.opacity = Math.pow(shell, 0.75) * 0.97;
+  // Frost IS the shell: it thins off the ball as you melt. Capped well short of
+  // opaque so it never becomes a lid over the passenger.
+  B.rimeMat.opacity = Math.pow(shell, 0.75) * 0.62;
   B.rime.visible = shell > 0.02;
 
   // ---- rolling. This is the whole point of the rime layer.
@@ -302,10 +361,32 @@ export function updateBall(B, sim, dt, settings) {
 
   // Curled and still when calm; unfolding and turning as the ice goes.
   const unfurl = agit + B.brace * 0.5;
-  B.sleeper.scale.setScalar(T.R_MIN * (0.62 + unfurl * 0.10));
-  B.sleeper.rotation.x = -0.5 + unfurl * 0.55 + B.brace * 0.4;
-  B.sleeper.rotation.y += dt * (0.25 + agit * 2.4);
-  B.sleeper.rotation.z = Math.sin(sim.time * 3.1) * agit * 0.5;
+  B.sleeper.scale.setScalar(sleeperScale(r) * (1 + unfurl * 0.10));
+
+  /* It FACES WHERE IT IS GOING. A passenger spun by the clock reads as cargo
+   * rattling around; one that holds a heading, leans into what the ball is
+   * doing and only loses its composure as the ice goes reads as a creature.
+   * Yaw is chased rather than snapped so a hard direction change swings it. */
+  const sp = Math.hypot(b.v.x, b.v.z);
+  if (sp > 0.6) {
+    const want = Math.atan2(b.v.x, b.v.z);
+    let d = want - B.yaw;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    B.yaw += d * Math.min(1, 4.5 * dt);
+  }
+  B.yaw += dt * agit * 2.4;                    // and it starts to turn once roused
+
+  // lateral acceleration, in the sleeper's own frame -> bank into the turn
+  const cy = Math.cos(-B.yaw), sy = Math.sin(-B.yaw);
+  const latA = B.accel.x * cy - B.accel.z * sy;
+  const lonA = B.accel.x * sy + B.accel.z * cy;
+
+  B.sleeper.rotation.y = B.yaw;
+  B.sleeper.rotation.x = -0.5 + unfurl * 0.55 + B.brace * 0.4
+    - Math.max(-0.45, Math.min(0.45, lonA * 0.012));       // pitch under thrust
+  B.sleeper.rotation.z = Math.max(-0.5, Math.min(0.5, latA * 0.014))
+    + Math.sin(sim.time * 3.1) * agit * 0.5;
 
   // It breathes. Slow and deep while it sleeps, shallow and quick once it does
   // not -- the flank moving at all is what separates a passenger from a rock.
@@ -323,6 +404,11 @@ export function updateBall(B, sim, dt, settings) {
   B.eyeMat.emissiveIntensity = open * 2.6;
 
   B.sleeperMat.emissiveIntensity = agit * 1.5 + b.startle * 0.35;
+  B.paleMat.emissiveIntensity = agit * 0.9 + b.startle * 0.2;
+  // the interior fill rides with the shell so it stays a lit creature, not a
+  // shadow, at every thickness
+  B.fill.intensity = 1.5 + agit * 1.2;
+  B.fill.distance = r * 4.2;
   B.glow.intensity = agit * 2.2 + b.startle * 0.8 + B.crackAmt * 1.5;
 }
 

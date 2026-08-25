@@ -30,6 +30,65 @@ let last = 0, lastRender = 0, raf = 0;
 const keys = new Set();
 const input = { x: 0, z: 0 };
 
+/* ------------------------------------------------------------------ touch
+ *
+ * A FLOATING stick. The pad appears wherever the thumb lands instead of in a
+ * fixed corner, because there is no one corner that is comfortable across
+ * phone sizes and grips, and a fixed pad means looking away from the road to
+ * find it. Only the first touch on the play surface steers -- a second finger
+ * is ignored rather than fighting the first.
+ *
+ * RADIUS is in CSS pixels and is deliberately short: this drives a TILT, and
+ * full deflection wants to be reachable with a thumb that is not travelling.
+ */
+const TOUCH_RADIUS = 62;
+const touch = { id: null, ox: 0, oy: 0, x: 0, y: 0 };
+let touchUsed = false;
+
+function stickEl() { return document.getElementById('stick'); }
+
+function touchStart(e) {
+  if (touch.id !== null) return;
+  if (e.target.closest('button, .menu, .row, li, .screen')) return;  // UI first
+  const t = e.changedTouches ? e.changedTouches[0] : e;
+  touch.id = t.identifier ?? 'mouse';
+  touch.ox = t.clientX; touch.oy = t.clientY;
+  touch.x = touch.y = 0;
+  if (!touchUsed) { touchUsed = true; document.body.classList.add('touch'); }
+  const el = stickEl();
+  el.style.left = t.clientX + 'px';
+  el.style.top = t.clientY + 'px';
+  el.style.setProperty('--kx', '0px');
+  el.style.setProperty('--ky', '0px');
+  el.classList.add('on');
+}
+
+function touchMove(e) {
+  if (touch.id === null) return;
+  const list = e.changedTouches || [e];
+  for (const t of list) {
+    if ((t.identifier ?? 'mouse') !== touch.id) continue;
+    let dx = t.clientX - touch.ox, dy = t.clientY - touch.oy;
+    const m = Math.hypot(dx, dy);
+    if (m > TOUCH_RADIUS) { dx = dx / m * TOUCH_RADIUS; dy = dy / m * TOUCH_RADIUS; }
+    touch.x = dx / TOUCH_RADIUS;
+    touch.y = dy / TOUCH_RADIUS;
+    const el = stickEl();
+    el.style.setProperty('--kx', dx.toFixed(1) + 'px');
+    el.style.setProperty('--ky', dy.toFixed(1) + 'px');
+  }
+}
+
+function touchEnd(e) {
+  if (touch.id === null) return;
+  const list = e.changedTouches || [e];
+  for (const t of list) {
+    if ((t.identifier ?? 'mouse') !== touch.id) continue;
+    touch.id = null; touch.x = touch.y = 0;
+    stickEl().classList.remove('on');
+  }
+}
+
 // ---------------------------------------------------------------- input
 
 function readInput() {
@@ -38,6 +97,8 @@ function readInput() {
   if (keys.has('arrowdown') || keys.has('s')) iy -= 1;
   if (keys.has('arrowright') || keys.has('d')) ix += 1;
   if (keys.has('arrowleft') || keys.has('a')) ix -= 1;
+
+  if (touch.id !== null) { ix += touch.x; iy -= touch.y; }
 
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   for (const p of pads) {
@@ -456,6 +517,30 @@ export function boot() {
   window.addEventListener('blur', () => keys.clear());
   window.addEventListener('pointerdown', () => { audio.start(); audio.resume(); });
   window.addEventListener('resize', resize);
+  // iOS reports the OLD size inside the resize event during an orientation
+  // change; the visual viewport settles a frame or two later.
+  window.addEventListener('orientationchange', () => setTimeout(resize, 260));
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
+
+  const canvas = $('c');
+  canvas.addEventListener('touchstart', (e) => { touchStart(e); e.preventDefault(); }, { passive: false });
+  canvas.addEventListener('touchmove', (e) => { touchMove(e); e.preventDefault(); }, { passive: false });
+  for (const ev of ['touchend', 'touchcancel']) canvas.addEventListener(ev, touchEnd);
+
+  const pauseBtn = $('touchPause');
+  /* Dispatch the real key rather than reaching into the pause code: pausing
+   * also stops the bed, hushes the synth and hands the stage to the UI, and a
+   * second copy of that list is a second thing to forget to update. */
+  pauseBtn.addEventListener('click', () => {
+    keys.clear();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+  });
+
+  // The on-screen pause only exists once a touch has happened, and only while
+  // a stage is actually running -- it has nothing to do on a menu.
+  setInterval(() => {
+    pauseBtn.classList.toggle('on', touchUsed && mode === 'play');
+  }, 300);
 
   resize();
   startAttract(0);
