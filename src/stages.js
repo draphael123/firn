@@ -404,7 +404,8 @@ const s3 = {
     plate(-40, -14, 118, 126, 8),
     railX(117.65, -40, -22, 8), railX(126.35, -32, -14, 8),
     ...ramp(-40, -32, 126, 148, 8, 14),
-    railZ(-40.35, 26, 148, 14),
+    railZ(-40.35, 26, 60, 0),          // the outer wall has to follow the climb
+    railZ(-40.35, 118, 126, 8),
 
     // ---- RIGHT: the basin. Warm stone, rails all round bar the two openings.
     plate(6, 30, 26, 50, 0, 'warm'),
@@ -466,6 +467,7 @@ const s4 = {
     // ---- the narrows: hot, tight, and the fast way
     plate(-4, 4, 58, 96, 8, 'warm'),
     railZ(4.35, 58, 96, 8),
+    railX(58.35, 4, 6, 8),             // shoulder of the wider plate behind it
 
     // ---- the cold channel: out and around, no heat
     plate(-28, -4, 50, 58, 8),
@@ -614,13 +616,18 @@ const s6 = {
     grate(-8, 8, 154, 192, 13),
     plate(-14, 8, 192, 202, 13),
     railZ(-14.35, 192, 202, 13),
+    railX(202.35, 0, 8, 13),           // the bend only continues to the left
 
     // ---- the last stair to the summit
     ...arc(-20, 202, 14, 0, Math.PI / 2, 12, 13),
     plate(-26, -14, 202, 224, 13),
     ...ramp(-26, -14, 224, 250, 13, 20),
     plate(-26, -14, 250, 272, 20),
-    railZ(-26.35, 202, 272, 20), railZ(-13.65, 216, 272, 20),
+    // No kerb between the bend and the ramp: the bend's outer wall already
+    // stands there. Its chords reach past this plate's edge, so a kerb drawn
+    // to the PLATE sits in the road -- which is what the checker's diagonal
+    // samples were really seeing.
+    railZ(-26.35, 250, 272, 20), railZ(-13.65, 250, 272, 20),
     railX(272.35, -26, -14, 20, 2.6),
   ].flat(),
   heat: [heat(0, 8, 52, 9, 0.19), heat(-30, 8, 88, 10, 0.03), heat(0, 13, 176, 10, 0.028)],
