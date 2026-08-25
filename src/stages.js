@@ -81,6 +81,92 @@ function ramp(x0, x1, z0, z1, topA, topB, opts = {}) {
   return out;
 }
 
+/* ------------------------------------------------------------- obstacles
+ *
+ * The causeway is old, and the world under it is coming apart. Everything here
+ * is the SAME architecture in a worse state -- masonry off the parapet, a span
+ * that has dropped, a deck worn down to its ribs -- rather than a new kind of
+ * object dropped onto the road. That is what makes an obstacle read as part of
+ * the place instead of as furniture: it is built of the deck's own stone, it
+ * sits at the deck's own angles, and it explains itself.
+ *
+ * All of it is ordinary collidable stone. Nothing is scripted.
+ *
+ * Obstacles carry kind 'block' rather than 'stone'. The sim treats every kind
+ * except 'grate' as solid, so this changes nothing physically -- but it keeps
+ * them out of the two places that scan for road surfaces: buildStageProps(),
+ * which would otherwise grow piers and a handline under a lump of fallen
+ * masonry, and gap-check, which correctly but uselessly reports every one of
+ * them as a 1.7m step in the floor.
+ */
+
+/** Deterministic, so a stage is the same every time it is built. */
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * A kicker: a short, steep rise that ENDS, so you leave the deck at the lip.
+ *
+ * There is no jump button in this game and there should not be one -- you have
+ * a tilt and a slope, and that is the whole vocabulary. A kicker turns speed
+ * into height without adding a verb, which also makes it a genuine risk: you
+ * cannot steer much while you are off the ground, so taking one fast commits
+ * you to wherever you were pointing.
+ */
+function kicker(x0, x1, z0, z1, top, rise, opts = {}) {
+  return ramp(x0, x1, z0, z1, top, top + rise, { rails: false, kind: 'block', ...opts });
+}
+
+/**
+ * Fallen masonry. Blocks of the parapet down on the deck, squared and at the
+ * road's angles because that is what they were cut for -- scattered boulders
+ * would read as a different world's props.
+ */
+function rubble(cx, cz, top, opts = {}) {
+  const rnd = rng(opts.seed ?? 7);
+  const n = opts.count ?? 4;
+  const spread = opts.spread ?? 4.5;
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const w = 0.9 + rnd() * 1.5, h = 0.7 + rnd() * 1.1, d = 0.9 + rnd() * 1.4;
+    out.push({
+      // sits ON the deck: half its height above the surface, never sunk into it
+      p: [cx + (rnd() - 0.5) * spread, top + h / 2, cz + (rnd() - 0.5) * spread * 0.8],
+      s: [w, h, d], kind: 'block',
+      rot: [0, (rnd() - 0.5) * 0.9, 0],
+    });
+  }
+  return out;
+}
+
+/** A pier that has pushed up through the deck, or a parapet post left standing. */
+function pillar(cx, cz, top, h = 2.4, w = 1.3) {
+  return { p: [cx, top + h / 2, cz], s: [w, h, w], kind: 'block' };
+}
+
+/**
+ * A narrow run with no kerbs on it -- the deck worn back to the ribs that carry
+ * it. The parapet is what makes the rest of this road forgiving, so taking it
+ * away is the cheapest way to ask for precision without adding any new rule.
+ */
+function beam(x, z0, z1, top, w = 3.4) {
+  return plate(x - w / 2, x + w / 2, z0, z1, top);
+}
+
+/* NO LEDGE PRIMITIVE. A squared step across the road is a WALL in a game with
+ * no jump: arrive slowly and you stop dead against its vertical face with no
+ * verb that gets you over it. One 0.30 step on The Icefall took a keyboard
+ * player's completion rate from 7/7 to 1/7 while course-check stayed green,
+ * because the analog pilot always arrived carrying enough speed to roll it.
+ * Use kicker() -- a slope has no face to catch on. */
+
 /**
  * A curved run, centred on (cx,cz), swept from angle a0 to a1. Straight lines
  * and right angles are most of what makes a route read as a prototype; this is
@@ -203,6 +289,7 @@ const s0 = {
     { z: -8,  text: 'Hold a direction. You do not steer the ice — you tilt the world under it.' },
     { z: 18,  text: 'Let go and the ground levels. To slow down, tilt back against the way you are going.' },
     { z: 34,  text: 'A bend. Set it up early: the ice keeps whatever speed you give it.' },
+    { z: 56,  text: 'The parapet is coming down. Go around the stone, or over the broken slab.' },
     { z: 76,  text: 'A rise. Carry speed into it, or you will stall halfway up.' },
     { z: 104, text: 'Warm ground. Watch the gauge — that shell is the only thing keeping it asleep.' },
     { z: 120, text: 'The gate is too low for a full shell. Melt on the warm stone until you fit through.' },
@@ -217,6 +304,12 @@ const s0 = {
     ...chicane(0, 30, 10, 12, 0, 1),
     plate(14, 26, 50, 74, 0),
     railZ(26.35, 50, 132, 0, 2.0),
+    // masonry off the parapet, tight to the edges so the tutorial teaches the
+    // idea of an obstacle without punishing anyone for meeting one
+    ...rubble(24.6, 58, 0, { seed: 3, count: 3, spread: 2.6 }),
+    ...rubble(15.4, 68, 0, { seed: 8, count: 3, spread: 2.6 }),
+    // and a broken slab to take some air off
+    ...kicker(14, 26, 62, 66.5, 0, 1.15),
 
     // room 3: a rise
     ...ramp(14, 26, 74, 96, 0, 6),
@@ -277,6 +370,8 @@ const s1 = {
     // a chicane to the left, around the biggest vent
     ...chicane(0, 62, 9, 12, 8, -1),
     plate(-24, -12, 80, 100, 8),
+    ...rubble(-13.4, 86, 8, { seed: 21, count: 3, spread: 2.4 }),
+    pillar(-22.4, 94, 8, 2.6, 1.4),
 
     ...ramp(-24, -12, 100, 128, 8, 16),
     plate(-24, -12, 128, 142, 16),
@@ -284,6 +379,7 @@ const s1 = {
     // and back to the right for the final rise
     ...chicane(-18, 142, 9, 12, 16, 1),
     plate(-6, 6, 160, 176, 16),
+    ...kicker(-6, 6, 165, 169.5, 16, 1.3),
 
     ...ramp(-6, 6, 176, 200, 16, 24),
     plate(-6, 6, 200, 218, 24),
@@ -335,6 +431,7 @@ const s2 = {
     // ---- straight on, through the gate
     ...gate(44, -4, 4, -3, 3, 0),
     plate(-3, 3, 44, 56, 0),
+    pillar(-2.5, 50, 0, 2.8, 1.1),        // squeeze past on the open side
     railZ(-3.35, 44, 56, 0), railZ(3.35, 44, 56, 0),
     ...ramp(-3, 3, 56, 88, 0, 8),
 
@@ -349,6 +446,7 @@ const s2 = {
 
     // ---- both meet, then the last rise to the crossing
     plate(-8, 8, 88, 104, 8),
+    ...rubble(6.6, 96, 8, { seed: 5, count: 4, spread: 3.0 }),
     ...ramp(-8, 8, 104, 126, 8, 13),
     plate(-8, 8, 126, 140, 13),
     railZ(-8.35, 88, 140, 13), railZ(8.35, 88, 140, 13),
@@ -537,10 +635,14 @@ const s5 = {
     plate(16, 28, 92, 106, 5),
     railZ(15.65, 92, 106, 5),
     plate(16, 28, 111, 148, 2),
+    ...rubble(26.4, 120, 2, { seed: 13, count: 3, spread: 2.6 }),
+    ...kicker(16, 28, 130, 135, 2, 1.5),
+    ...rubble(17.6, 142, 2, { seed: 31, count: 3, spread: 2.6 }),
     railZ(15.65, 111, 148, 2), railZ(28.35, 111, 148, 2),
 
     ...ramp(16, 28, 148, 180, 2, 11),
     plate(16, 28, 180, 196, 11),
+    ...kicker(16, 28, 186, 190, 11, 0.8),
     railZ(15.65, 180, 196, 11), railZ(28.35, 180, 196, 11),
 
     // a last chicane back to the left, then the summit ramp

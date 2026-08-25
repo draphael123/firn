@@ -27,7 +27,14 @@ const C = {
   stone:  0x69777f,
   stone2: 0x58656d,
   rail:   0x414d55,
-  warm:   0xa86b52,
+  /* Warm ground has to be unmistakable -- you plan the whole melt around where
+   * it is -- but it must say so in this world's own vocabulary. Terracotta was
+   * the first attempt and 0x4a4038 the second; both are WARM browns, and a warm
+   * brown under a warm key at exposure 2.16 comes back off the screen at
+   * #ba7a5f whatever you do to the emissive. The cue is WETNESS instead: cool
+   * dark stone, low roughness so it catches the sky, and the steam, coping and
+   * grille to say why. */
+  warm:   0x3d454a,
   gate:   0x63787f,
   grate:  0x4f6068,
   ice:    0xdbeef5,
@@ -325,6 +332,14 @@ export class View {
     this.key.intensity = W.keyPower;
     this.hemi.color.setHex(W.hemi);
     this.hemi.intensity = W.ambient;
+    /* The GROUND half of the hemisphere was hardcoded to 0x1b262c and never
+     * touched again, so every downward-facing surface in every world was lit by
+     * near-black however pale the terrain underneath actually was. That is why
+     * the causeway's outer fascia and its whole understructure read as a solid
+     * black slab -- a hole in the world rather than a bridge over one. It is
+     * the bounce off the ground below, so it should be the colour of that
+     * ground, knocked down because a bounce is never as bright as the source. */
+    this.hemi.groundColor.setHex(W.groundColor).multiplyScalar(0.55);
     this.renderer.toneMappingExposure = this.settings.exposure * (W.exposure / 1.8);
     this.sky.visible = !W.ceiling;
 
@@ -425,7 +440,18 @@ export class View {
       stone:  std(C.stone, 0.86),
       stone2: std(C.stone2, 0.93),
       rail:   std(C.rail, 0.62, 0.25),
-      warm:   std(C.warm, 0.78, 0.02, { emissive: C.ember, emissiveIntensity: 0.18 }),
+      /* Emissive ignores the base colour entirely, so darkening the stone did
+       * nothing to calm this down -- at 0.30 against an exposure of 2.16 the
+       * whole warm room read as a sheet of hot orange plastic. The stone is
+       * what should say "wet and hot"; the emissive is only a hint of what is
+       * underneath it. */
+      /* NO emissive. Even 0.035 of a saturated ember is a large RELATIVE
+       * addition on a dark base, and it turned the whole warm room dusty pink
+       * -- which survived three separate attempts to fix it by changing the
+       * base colour, the lights and the decals, because none of those was the
+       * cause. The slab is wet, dark and cool; the mouth glows, and that is
+       * where the heat is. */
+      warm:   std(C.warm, 0.20, 0.16),
       gate:   std(C.gate, 0.7, 0.2),
       grate:  std(C.grate, 0.55, 0.45),
     };
@@ -715,22 +741,23 @@ export class View {
     this.stageGroup.add(vent);
     this.vents.push(vent);
 
-    const l = new THREE.PointLight(C.ember, Math.min(9, h.q * 70), h.r * 2.2, 2);
-    l.position.set(h.p[0], h.p[1] + 1.5, h.p[2]);
+    /* This was the real source of the orange room. At intensity 9 over a
+     * 24-unit radius the vent floodlit the entire warm plate and everything
+     * near it, so no amount of calming the MATERIALS helped -- they were being
+     * washed by a lamp. A vent glows at its mouth and a little way past it. */
+    const l = new THREE.PointLight(C.ember, Math.min(3.2, h.q * 9), h.r * 1.15, 2.4);
+    l.position.set(h.p[0], h.p[1] + 0.8, h.p[2]);
     this.stageGroup.add(l);
 
-    const gl = View.glowSprite(C.ember, h.r * 0.85, 0.32);
-    gl.position.set(h.p[0], h.p[1] + 0.6, h.p[2]);
+    const gl = View.glowSprite(C.ember, h.r * 0.34, 0.22);
+    gl.position.set(h.p[0], h.p[1] + 0.5, h.p[2]);
     this.stageGroup.add(gl);
 
-    // a scorched halo on the deck, so the reach of the heat is legible
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(h.r * 0.3, h.r * 0.98, 40),
-      new THREE.MeshBasicMaterial({ color: C.ember, transparent: true, opacity: 0.14, depthWrite: false, side: THREE.DoubleSide }),
-    );
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.set(h.p[0], h.p[1] + 0.02, h.p[2]);
-    this.stageGroup.add(ring);
+    /* No scorch halo. It was a 21-unit disc, so whatever colour it carried it
+     * carried over the entire warm room, and it was the other half of the pink.
+     * The reach of the heat is already legible without it: the warm plate is a
+     * distinct slab of wet dark stone, which is exactly the shape of the
+     * ground that melts you. */
   }
 
   addGoal(stage) {

@@ -154,6 +154,11 @@ function aoMaterial() {
   return new THREE.MeshBasicMaterial({
     map: aoTexture(), transparent: true, blending: THREE.MultiplyBlending,
     depthWrite: false, fog: true,
+    /* A decal a few centimetres above the deck still z-fights with it at
+     * grazing angles -- which is most of the time in a game viewed from behind
+     * and slightly above. polygonOffset biases it in DEPTH rather than in
+     * space, so it wins the test at every angle without floating. */
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
   });
 }
 
@@ -322,13 +327,19 @@ export function buildStageProps(stage, weather) {
       const p = pt(k, az ? 0 : t * len, k.e[1], az ? t * len : 0);
       const px = p[0], pz = p[2];
       let y = p[1];
+      /* Stack by HALF-HEIGHTS. Advancing a fixed fraction of the radius meant
+       * each stone rose 0.87r while standing 1.24r tall, so every cairn in the
+       * game overlapped itself by about a third and read as clipping rather
+       * than as stones resting on stones. */
       const stones = 3 + Math.floor(rnd() * 3);
+      let prevH = 0;
       for (let i = 0; i < stones; i++) {
         const rr = (0.55 - i * 0.07) * (0.8 + rnd() * 0.4);
-        y += rr * 0.55;
-        cairnStones.put(px + (rnd() - 0.5) * 0.18, y, pz + (rnd() - 0.5) * 0.18,
-          rr, rr * 0.62, rr, rnd() * 0.3, rnd() * 3, rnd() * 0.3);
-        y += rr * 0.32;
+        const h = rr * 0.62;
+        y += i === 0 ? h : (prevH + h) * 0.93;      // 0.93 = they settle a little
+        cairnStones.put(px + (rnd() - 0.5) * 0.14, y, pz + (rnd() - 0.5) * 0.14,
+          rr, h, rr, rnd() * 0.18, rnd() * 3, rnd() * 0.18);
+        prevH = h;
       }
     }
   }
@@ -359,9 +370,17 @@ export function buildStageProps(stage, weather) {
 
   // ---- the worn track: generations of bearers have scoured the middle of the
   // road bare. A path within the path, and the clearest possible racing line.
+  /* Stone polished by traffic, not a dirt path. 0x413c37 was a warm brown that
+   * read as mud once the deck around it stopped being black -- and mud is the
+   * one thing a frozen causeway should not have. Worn stone is SMOOTHER and a
+   * little paler than the flagstone it is cut into, so roughness does most of
+   * the work and the colour barely has to differ at all. */
   const trackMat = new THREE.MeshStandardMaterial({
-    color: icy ? 0x76858f : 0x413c37, roughness: 0.72, metalness: 0.05,
+    color: icy ? 0x8a99a3 : 0x8d9298, roughness: 0.34, metalness: 0.10,
   });
+  trackMat.polygonOffset = true;
+  trackMat.polygonOffsetFactor = -2;
+  trackMat.polygonOffsetUnits = -2;
   const track = bank(BOX, trackMat, 140);
   for (const b of deckList) {
     const az = alongZ(b);
@@ -451,22 +470,55 @@ export function buildWorldProps(stage, weather) {
  */
 export function buildVent(h, weather) {
   const g = new THREE.Group();
-  const rim = new THREE.MeshStandardMaterial({ color: 0x6b4034, roughness: 0.85, flatShading: true });
-  const glow = new THREE.MeshBasicMaterial({ color: 0xd4603a, transparent: true, opacity: 0.5, depthWrite: false });
+  /* A vent is BUILT, like everything else on this road.
+   *
+   * It used to be a ring of scorched red boulders around a glowing disc, which
+   * on a grey flagstone causeway read as scenery borrowed from somewhere else.
+   * The rest of the world is squared stone, iron and rope, so this is a coped
+   * well-head with an iron grille over it: the same three materials, doing an
+   * obvious job. The heat then reads as something the road was built AROUND,
+   * which is also the fiction -- the bearers stop here to thin the ice.
+   */
+  const coping = new THREE.MeshStandardMaterial({ color: 0x7c8184, roughness: 0.9, flatShading: true });
+  const iron = new THREE.MeshStandardMaterial({ color: 0x2e3438, roughness: 0.5, metalness: 0.55, flatShading: true });
+  const glow = new THREE.MeshBasicMaterial({
+    color: 0xc4522c, transparent: true, opacity: 0.30, depthWrite: false,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+  });
   const rnd = mulberry32(Math.round(h.p[0] * 13 + h.p[2] * 7) >>> 0);
 
-  // a broken rim of scorched rock around the mouth
-  const ring = bank(ROCK, rim, 40);
-  const n = 16 + Math.floor(rnd() * 10);
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2 + rnd() * 0.2;
-    const r = h.r * (0.26 + rnd() * 0.09);
-    const s = h.r * (0.07 + rnd() * 0.07);
-    ring.put(Math.cos(a) * r, s * 0.3, Math.sin(a) * r, s, s * (0.7 + rnd()), s, rnd(), rnd() * 3, rnd());
+  // a squared coping course around the mouth, laid like the deck's own trim
+  const R = h.r * 0.34;
+  const blocks = bank(BOX, coping, 40);
+  const per = 5;
+  for (const side of [0, 1, 2, 3]) {
+    const a = (side * Math.PI) / 2;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    for (let i = 0; i < per; i++) {
+      const t = (i + 0.5) / per - 0.5;
+      const len = (R * 2) / per * 0.94;
+      const jx = (rnd() - 0.5) * 0.06;
+      blocks.put(
+        ca * (R + 0.34) - sa * (t * R * 2), 0.22 + jx, sa * (R + 0.34) + ca * (t * R * 2),
+        side % 2 ? len : 0.68, 0.44 + jx, side % 2 ? 0.68 : len,
+        0, 0, 0,
+      );
+    }
   }
-  g.add(ring.seal());
+  g.add(blocks.seal());
 
-  const mouth = new THREE.Mesh(new THREE.CircleGeometry(h.r * 0.26, 24), glow);
+  // an iron grille over the mouth -- the same language as the grate colliders
+  const bars = bank(BOX, iron, 16);
+  const nb = 5;
+  for (let i = 0; i < nb; i++) {
+    const t = (i + 0.5) / nb - 0.5;
+    bars.put(t * R * 1.9, 0.30, 0, 0.13, 0.13, R * 2.0);
+  }
+  bars.put(0, 0.30, -R * 0.95, R * 2.0, 0.15, 0.15);
+  bars.put(0, 0.30, R * 0.95, R * 2.0, 0.15, 0.15);
+  g.add(bars.seal());
+
+  const mouth = new THREE.Mesh(new THREE.CircleGeometry(R * 0.92, 24), glow);
   mouth.rotation.x = -Math.PI / 2;
   mouth.position.y = 0.06;
   g.add(mouth);

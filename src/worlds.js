@@ -106,7 +106,18 @@ export const WORLDS = {
   },
 };
 
-export const worldOf = (stage) => WORLDS[stage.world] || WORLDS.frozensea;
+/**
+ * One world for every stage, for now.
+ *
+ * The six bands still exist and every stage still declares which one it belongs
+ * to; this just overrides the lookup. Set to null to get the descent's full
+ * range back -- nothing else needs touching, because everything visual is
+ * derived from the descriptor rather than from the stage.
+ */
+export const FORCE_WORLD = 'thaw';
+
+export const worldOf = (stage) =>
+  WORLDS[FORCE_WORLD || stage.world] || WORLDS.frozensea;
 
 /** Fine grading within a world, from the stage's own warmth. */
 export function gradeFor(stage) {

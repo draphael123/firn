@@ -74,7 +74,10 @@ function topAt(b, x, z) {
 function support(stage, x, y, z) {
   let best = null, bestBox = null;
   for (const b of stage.boxes) {
-    if (b.kind === 'rail' || b.kind === 'gate') continue;
+    // 'block' is deliberate obstacle geometry -- fallen masonry, kickers,
+    // standing stone. It is meant to be a step in the road, so reporting it as
+    // one is noise; what matters is the deck underneath it.
+    if (b.kind === 'rail' || b.kind === 'gate' || b.kind === 'block') continue;
     const top = topAt(b, x, z);
     if (top === null) continue;
     if (top <= y + 1.4 && top >= y - REACH && (best === null || top > best)) {
