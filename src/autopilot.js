@@ -42,7 +42,19 @@ export function autopilot(waypoints, opts = {}) {
     let tx, tz, spdCap = cruise;
     if (melting) {
       if (sim.ball.shell <= melt.until) melting = false;
-      else { tx = melt.x; tz = melt.z; spdCap = 4.5; }   // sit on the hot spot
+      else {
+        tx = melt.x; tz = melt.z;
+        /* Capping speed for the WHOLE melt phase made the pilot crawl to the
+         * hot spot and crawl away from it again, which is not how anyone plays
+         * it: you sprint in, park on the hottest ground, and sprint out the
+         * moment you fit. Melt rate barely depends on speed anyway -- friction
+         * contributes ~0.008/s against an ambient of 0.20 in the basin -- so
+         * all that dawdling bought was a slower lap.
+         *
+         * Getting this wrong is what made the shortcut look worthless for
+         * three rounds of stage tuning. */
+        spdCap = Math.hypot(p.x - tx, p.z - tz) > 4 ? cruise : 3.0;
+      }
     }
     if (tx === undefined) {
       const w = waypoints[Math.min(i, waypoints.length - 1)];

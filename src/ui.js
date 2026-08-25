@@ -119,13 +119,38 @@ export class Store {
   }
   resetSettings() { this.idx = defaultIndices(); this.save(); }
   settings() { return resolveSettings(this.idx); }
+  /* Best time and best shell are tracked INDEPENDENTLY, because they are won
+   * by opposite play: the fast lap takes the gate and arrives thin, the intact
+   * lap goes round and arrives slow. Storing the shell of the fastest run would
+   * make the second mark unwinnable without giving up the first. */
   record(stageId, time, shell) {
-    const b = this.best[stageId];
+    const b = this.best[stageId] || { time: Infinity, shell: 0 };
     this.cleared[stageId] = true;
-    const better = !b || time < b.time;
-    if (better) this.best[stageId] = { time, shell };
+    const betterTime = time < b.time;
+    const betterShell = shell > b.shell;
+    this.best[stageId] = {
+      time: Math.min(time, b.time),
+      shell: Math.max(shell, b.shell),
+    };
     this.save();
-    return better;
+    return { betterTime, betterShell };
+  }
+
+  /** Marks earned on a stage: swift (beat par time), whole (kept par shell). */
+  marks(stage) {
+    const b = this.best[stage.id];
+    const par = stage.par;
+    if (!b || !par) return { swift: false, whole: false };
+    return { swift: b.time <= par.time, whole: b.shell >= par.shell };
+  }
+
+  totalMarks() {
+    let n = 0;
+    for (const st of STAGES) {
+      const m = this.marks(st);
+      n += (m.swift ? 1 : 0) + (m.whole ? 1 : 0);
+    }
+    return n;
   }
   nextBearer() { this.bearer++; this.save(); return this.bearer; }
   unlocked(i) { return i === 0 || !!this.cleared[STAGES[i - 1].id]; }
@@ -236,22 +261,26 @@ export class UI {
       const open = this.store.unlocked(i);
       if (!open) li.setAttribute('aria-disabled', 'true');
       const b = this.store.best[st.id];
+      const mk = this.store.marks(st);
       li.innerHTML = `
         <span class="idx">${st.numeral}</span>
         <span class="meta">
           <span class="nm">${open ? st.name : 'Sealed'}</span>
           <span class="best">${open
-            ? (b ? `Best <span class="v">${fmtTime(b.time)}s</span> &nbsp;·&nbsp; shell <span class="v">${Math.round(b.shell * 100)}%</span>`
+            ? (b ? `<span class="v">${fmtTime(b.time)}s</span> <span class="par">par ${st.par.time}</span>`
+                 + ` &nbsp;·&nbsp; <span class="v">${Math.round(b.shell * 100)}%</span> <span class="par">par ${Math.round(st.par.shell * 100)}</span>`
                  : 'Not yet carried')
             : `Clear ${STAGES[i - 1].name} first`}</span>
-        </span>`;
+        </span>
+        <span class="marks">${open ? `<b class="${mk.swift ? 'on' : ''}">swift</b><b class="${mk.whole ? 'on' : ''}">whole</b>` : ''}</span>`;
       ul.appendChild(li);
     });
     const back = document.createElement('li');
     back.dataset.nav = ''; back.dataset.act = 'back';
     back.innerHTML = '<span class="idx">&larr;</span><span>Back</span>';
     ul.appendChild(back);
-    $('routeTail').textContent = `${Object.keys(this.store.cleared).length}/${STAGES.length} carried`;
+    $('routeTail').textContent =
+      `${Object.keys(this.store.cleared).length}/${STAGES.length} carried · ${this.store.totalMarks()}/${STAGES.length * 2} marks`;
   }
 
   buildSettings() {
@@ -394,6 +423,8 @@ export class UI {
 
   showResult(res) {
     const { won, reason, stage, time, shell, index, isBest } = res;
+    const par = stage.par || { time: 9999, shell: 2 };
+    const swift = time <= par.time, whole = shell >= par.shell;
     $('resEyebrow').textContent = won ? `Stage ${stage.numeral} · carried` : `Stage ${stage.numeral} · lost`;
     $('resHead').textContent = won ? 'Set down safely'
       : reason === 'woke' ? 'It woke' : 'It fell';
@@ -401,12 +432,17 @@ export class UI {
     const stats = $('resStats');
     if (won) {
       stats.innerHTML = `
-        <div class="stat"><span class="k">Time</span><span class="v num">${fmtTime(time)}</span>${isBest ? '<span class="n">best</span>' : ''}</div>
-        <div class="stat"><span class="k">Shell remaining</span><span class="v num">${Math.round(shell * 100)}%</span></div>`;
+        <div class="stat"><span class="k">Time</span><span class="v num">${fmtTime(time)}</span>
+          <span class="p">par ${par.time}</span>${isBest.betterTime ? '<span class="n">best</span>' : ''}
+          ${swift ? '<span class="mk">swift</span>' : ''}</div>
+        <div class="stat"><span class="k">Shell remaining</span><span class="v num">${Math.round(shell * 100)}%</span>
+          <span class="p">par ${Math.round(par.shell * 100)}</span>${isBest.betterShell ? '<span class="n">best</span>' : ''}
+          ${whole ? '<span class="mk">whole</span>' : ''}</div>`;
     } else {
       stats.innerHTML = `<p class="body">${reason === 'woke'
         ? 'The last of the ice gave way, and what it held did not stay asleep.'
-        : 'The ice went over the edge, and down, and did not stop.'}</p>`;
+        : 'The ice went over the edge, and down, and did not stop.'}</p>`
+        + (res.why ? `<p class="body why">${res.why}</p>` : '');
     }
 
     const line = $('bearerLine');

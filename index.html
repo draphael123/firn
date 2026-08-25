@@ -216,6 +216,21 @@
     font-variant-numeric: tabular-nums;
   }
   .stagerow .best .v { color: var(--ice); }
+  .stagerow .best .par { color: var(--dim); opacity: .6; font-size: 9.5px; }
+  /* Two marks per stage, side by side, so the pair you are missing is obvious
+     at a glance rather than something you have to work out from two numbers. */
+  .stagerow .marks { margin-left: auto; display: flex; gap: 8px; align-self: center; }
+  .stagerow .marks b {
+    font-weight: 400; font-size: 9px; letter-spacing: .18em; text-transform: uppercase;
+    color: #3a4a53; border: 1px solid rgba(168,200,212,.14); padding: 3px 7px;
+  }
+  .stagerow .marks b.on { color: var(--gold); border-color: rgba(201,169,97,.55); }
+
+  .stat .p { font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
+  .stat .mk {
+    font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--gold);
+    border: 1px solid rgba(201,169,97,.55); padding: 3px 8px; margin-left: 4px;
+  }
 
   /* ------------------------------------------------------------ HUD */
   #hud { position: fixed; inset: 0; z-index: 6; pointer-events: none; }
@@ -338,6 +353,9 @@
   .stat .k { font-size: 10.5px; letter-spacing: .24em; text-transform: uppercase; color: var(--ice); opacity: .6; min-width: 150px; }
   .stat .v { font-family: var(--serif); font-size: 34px; line-height: 1; font-variant-numeric: tabular-nums; }
   .stat .n { font-size: 10.5px; letter-spacing: .18em; text-transform: uppercase; color: var(--gold); }
+
+  /* The teaching line, not the eulogy: pale, factual, and it names a number. */
+  p.body.why { color: var(--ice); margin-top: 14px; border-left: 2px solid var(--ember); padding-left: 14px; }
 
   #bearerLine { margin-top: 20px; font-size: 12px; letter-spacing: .1em; color: var(--dim); }
   #bearerLine b { color: var(--bone); font-weight: 500; letter-spacing: .16em; }

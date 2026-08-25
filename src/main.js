@@ -11,10 +11,12 @@ import { autopilot } from './autopilot.js';
 import { View } from './render.js';
 import { Audio, Music, TRACK_FOR_WORLD } from './audio.js';
 import { Store, UI, fmtTime } from './ui.js';
+import { T as SIMT } from './sim.js';
 
 const $ = (id) => document.getElementById(id);
 const GATE_SHELL = shellForOpening(GATE_OPEN);
 const GRATE_SHELL = shellForOpening(GRATE_GAP);
+const T_BARE = SIMT.BARE_IMPACT;
 
 let store, settings, view, audio, music, ui;
 let sim = null, stageIndex = 0;
@@ -104,10 +106,40 @@ function quitToTitle() {
   ui.buildRoute();
 }
 
+/**
+ * Say what actually went wrong, in the mechanic's own terms.
+ *
+ * "It fell" is true and teaches nothing. The player is never more willing to
+ * learn the system than in the second after it beat them, so name the number
+ * they missed and by how much.
+ */
+function diagnose(sim, reason) {
+  const b = sim.ball;
+  const pct = (v) => Math.round(v * 100) + '%';
+  if (reason === 'woke') {
+    return `The shell was gone, and the landing was too hard. `
+         + `Bare ice will not take a blow over ${T_BARE.toFixed(1)} m/s — that one was `
+         + `${b.lastImpact.toFixed(1)}.`;
+  }
+  // did it drop THROUGH a grate rather than off an edge?
+  const grate = sim.stage.boxes.find((x) => x.kind === 'grate'
+    && Math.abs(b.p.x - x.c[0]) < x.e[0] + 1.5
+    && Math.abs(b.p.z - x.c[2]) < x.e[2] + 6);
+  if (grate) {
+    return `You went through the bars at ${pct(b.shell)}. `
+         + `They hold anything above ${pct(GRATE_SHELL)} — you were `
+         + `${Math.round((GRATE_SHELL - b.shell) * 100)} short.`;
+  }
+  const speed = Math.hypot(b.v.x, b.v.z);
+  return speed > 14
+    ? `Off the edge at ${speed.toFixed(0)} m/s. The ice keeps whatever speed you give it — set the corner up earlier.`
+    : `Off the edge. Tilt back against the way you are going to shed speed before a turn.`;
+}
+
 function finish() {
   const won = sim.state === 'won';
   const stage = STAGES[stageIndex];
-  let isBest = false;
+  let isBest = { betterTime: false, betterShell: false };
   if (won) isBest = store.record(stage.id, sim.time, sim.ball.shell);
   mode = 'over';
   audio.setBed(false);
@@ -123,6 +155,7 @@ function finish() {
   ui.showResult({
     won, reason: sim.reason, stage, time: sim.time,
     shell: sim.ball.shell, index: stageIndex, isBest,
+    why: won ? null : diagnose(sim, sim.reason),
   });
 }
 

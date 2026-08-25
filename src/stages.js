@@ -171,6 +171,11 @@ const heat = (x, y, z, r, q) => ({ p: [x, y, z], r, q });
  * you rather than on a timer. */
 const s0 = {
   id: 'threshold',
+  /* Two marks per stage, and they PULL AGAINST EACH OTHER: swift wants the
+   * gate, which costs shell; whole wants the way round, which costs time.
+   * That tension is the whole point of the melt economy, and without a
+   * target it only ever mattered on the first clear. */
+  par: { time: 26, shell: 0.50 },
   name: 'The Threshold',
   numeral: '0',
   world: 'thaw',
@@ -233,6 +238,11 @@ const s0 = {
  * stage is the rise and the heat, nothing else. */
 const s1 = {
   id: 'kiln',
+  /* Two marks per stage, and they PULL AGAINST EACH OTHER: swift wants the
+   * gate, which costs shell; whole wants the way round, which costs time.
+   * That tension is the whole point of the melt economy, and without a
+   * target it only ever mattered on the first clear. */
+  par: { time: 18, shell: 0.62 },
   name: 'The Kiln Road',
   numeral: 'I',
   world: 'geothermal',
@@ -285,6 +295,11 @@ const s1 = {
  * later gates: there is no floor here that stops holding you. */
 const s2 = {
   id: 'cathedral',
+  /* Two marks per stage, and they PULL AGAINST EACH OTHER: swift wants the
+   * gate, which costs shell; whole wants the way round, which costs time.
+   * That tension is the whole point of the melt economy, and without a
+   * target it only ever mattered on the first clear. */
+  par: { time: 13, shell: 0.65 },
   name: 'The Cathedral',
   numeral: 'II',
   world: 'cathedral',
@@ -340,6 +355,11 @@ const s2 = {
  * you are thin enough for the gate, then a long straight climb home. */
 const s3 = {
   id: 'thaw',
+  /* Two marks per stage, and they PULL AGAINST EACH OTHER: swift wants the
+   * gate, which costs shell; whole wants the way round, which costs time.
+   * That tension is the whole point of the melt economy, and without a
+   * target it only ever mattered on the first clear. */
+  par: { time: 16, shell: 0.60 },
   name: 'The Thaw Gate',
   numeral: 'III',
   world: 'frozensea',
@@ -404,6 +424,11 @@ const s3 = {
  * time and saves shell, so the decision is real rather than a reflex test. */
 const s4 = {
   id: 'weighing',
+  /* Two marks per stage, and they PULL AGAINST EACH OTHER: swift wants the
+   * gate, which costs shell; whole wants the way round, which costs time.
+   * That tension is the whole point of the melt economy, and without a
+   * target it only ever mattered on the first clear. */
+  par: { time: 15, shell: 0.65 },
   name: 'The Weighing',
   numeral: 'IV',
   world: 'frozensea',
@@ -463,6 +488,11 @@ const s4 = {
  * keeping what you have got. */
 const s5 = {
   id: 'icefall',
+  /* Two marks per stage, and they PULL AGAINST EACH OTHER: swift wants the
+   * gate, which costs shell; whole wants the way round, which costs time.
+   * That tension is the whole point of the melt economy, and without a
+   * target it only ever mattered on the first clear. */
+  par: { time: 21, shell: 0.60 },
   name: 'The Icefall',
   numeral: 'V',
   world: 'icefall',
@@ -521,6 +551,11 @@ const s5 = {
  * road between them to recover. */
 const s6 = {
   id: 'stair',
+  /* Two marks per stage, and they PULL AGAINST EACH OTHER: swift wants the
+   * gate, which costs shell; whole wants the way round, which costs time.
+   * That tension is the whole point of the melt economy, and without a
+   * target it only ever mattered on the first clear. */
+  par: { time: 23, shell: 0.38 },
   name: 'The Cold Stair',
   numeral: 'VI',
   world: 'neve',
@@ -534,7 +569,7 @@ const s6 = {
   waypoints: [[0, 0, 10], [0, 5, 40], [0, 8, 56], [0, 8, 68], [0, 8, 100],
               [0, 12, 132], [0, 13, 158], [0, 13, 190], [-8, 16, 208],
               [-20, 16, 232], [-20, 20, 252], [-20, 20, 262]],
-  meltAt: { x: 0, z: 52, until: 0.62 },
+  meltAt: { x: 0, z: 52, until: 0.70 },
   altRoute: [[0, 0, 10], [0, 5, 40], [0, 8, 52], [-20, 8, 55], [-30, 8, 74], [-30, 8, 98],
              [-16, 8, 104], [-2, 8, 106], [0, 8, 116], [0, 12, 132], [0, 13, 158], [0, 13, 190],
              [-8, 16, 208], [-20, 16, 232], [-20, 20, 252], [-20, 20, 262]],
@@ -578,7 +613,7 @@ const s6 = {
     railZ(-26.35, 202, 272, 20), railZ(-13.65, 216, 272, 20),
     railX(272.35, -26, -14, 20, 2.6),
   ].flat(),
-  heat: [heat(0, 8, 52, 9, 0.19), heat(-30, 8, 88, 10, 0.03), heat(0, 13, 172, 11, 0.05)],
+  heat: [heat(0, 8, 52, 9, 0.19), heat(-30, 8, 88, 10, 0.03), heat(0, 13, 176, 10, 0.028)],
 };
 
 /* ============================================================ TITLE SCENE
