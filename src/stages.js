@@ -30,15 +30,21 @@
  * carrying the shell the design requires.
  */
 
-import { quatFromEuler, rotV } from './sim.js';
+import { quatFromEuler, rotV, T } from './sim.js';
 
 export const FLOOR = 1.0;
-export const RAIL_H = 1.1;
-export const GATE_OPEN = 0.80;     // shell < 0.545 to pass
-export const GRATE_GAP = 0.62;     // shell < 0.273 to fall through
+/* Kerbs stopped a ball of radius 0.55 at twice its radius. The ball is 0.88
+ * now, so a 1.1 kerb would only be 1.25x -- low enough to ride up and over on a
+ * hard lean. Raised to keep something close to the old margin without turning
+ * the road into a trench. */
+export const RAIL_H = 1.45;
+export const GATE_OPEN = 1.28;     // shell < 0.545 to pass
+export const GRATE_GAP = 0.992;    // shell < 0.273 to fall through
 
 /** Shell value at which a ball of diameter `open` just fits. */
-export const shellForOpening = (open) => (open / 2 - 0.22) / (0.55 - 0.22);
+/* Derived from the tuning table rather than from baked-in numbers: resizing the
+ * ball must not silently move the two thresholds the design rests on. */
+export const shellForOpening = (open) => (open / 2 - T.R_MIN) / (T.R_MAX - T.R_MIN);
 
 // ---------------------------------------------------------------- helpers
 
@@ -683,7 +689,14 @@ const s6 = {
   waypoints: [[0, 0, 10], [0, 5, 40], [0, 8, 56], [0, 8, 68], [0, 8, 100],
               [0, 12, 132], [0, 13, 158], [0, 13, 190], [-8, 16, 208],
               [-20, 16, 232], [-20, 20, 252], [-20, 20, 262]],
-  meltAt: { x: 0, z: 52, until: 0.70 },
+  /* The summit is the only stage with a gate AND a grate, so its melt window is
+   * two-sided: thin enough to fit the lintel (< 0.545) and still thick enough
+   * that the bars hold you (> 0.273). The ball keeps melting for about 15
+   * points between this warm ground and the lintel, which leaves a real target
+   * band of roughly 0.39 to 0.54 at the gate. 0.70 left the pilot too thick to
+   * fit; melting all the way to the gate threshold dropped it through the
+   * grate 40m later. This aims at the middle of the band on purpose. */
+  meltAt: { x: 0, z: 52, until: 0.61 },
   altRoute: [[0, 0, 10], [0, 5, 40], [0, 8, 52], [-20, 8, 55], [-30, 8, 74], [-30, 8, 98],
              [-16, 8, 104], [-2, 8, 106], [0, 8, 116], [0, 12, 132], [0, 13, 158], [0, 13, 190],
              [-8, 16, 208], [-20, 16, 232], [-20, 20, 252], [-20, 20, 262]],

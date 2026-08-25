@@ -204,6 +204,30 @@ export function buildStageProps(stage, weather) {
     return _w;
   };
   const rot = (b) => (b.rot || [0, 0, 0]);
+  /**
+   * How much of a box's length a per-box prop may use.
+   *
+   * arc() sizes its chord segments from the OUTER radius and therefore overlaps
+   * its neighbours by about 18% -- deliberately, so the road has no seam to
+   * catch on. Anything laid ONE PER BOX inherits that overlap, and two 2cm
+   * slabs at the same height fighting for the same pixels is exactly what
+   * "clipping in the floor" looks like. Straight plates abut, so they keep the
+   * full length.
+   */
+  const alongFactor = (b) => (Math.abs(rot(b)[1]) > 1e-3 ? 0.82 : 0.98);
+
+  /** Height of the deck surface under (x,z) -- what a prop must stand ON. */
+  const deckTopAt = (x, z) => {
+    let best = null;
+    for (const b of stage.boxes) {
+      if (b.kind === 'rail' || b.kind === 'gate' || b.kind === 'block') continue;
+      if (b.q) continue;                       // ramps and bends: not a flat stand
+      if (Math.abs(x - b.c[0]) > b.e[0] || Math.abs(z - b.c[2]) > b.e[2]) continue;
+      const top = b.c[1] + b.e[1];
+      if (best === null || top > best) best = top;
+    }
+    return best;
+  };
   /** Long axis of a box, in its own frame: true when it runs along local Z. */
   const alongZ = (b) => b.e[2] >= b.e[0];
 
@@ -290,7 +314,7 @@ export function buildStageProps(stage, weather) {
     for (let i = 0; i < cn; i++) {
       const t = -0.5 + (i + 0.5) / cn;
       const p = pt(k, az ? 0 : t * len, k.e[1] - 0.05, az ? t * len : 0);
-      const seg = (len / cn) * 0.86;
+      const seg = (len / cn) * 0.86 * (alongFactor(k) / 0.98);
       caps.put(p[0], p[1], p[2],
         az ? k.e[0] * 2 * 1.12 : seg, 0.2, az ? seg : k.e[2] * 2 * 1.12,
         r[0], r[1], r[2]);
@@ -387,8 +411,9 @@ export function buildStageProps(stage, weather) {
     const w = Math.min(2.6, (az ? b.e[0] : b.e[2]) * 0.9);
     const p = pt(b, 0, b.e[1] + 0.012, 0);
     const r = rot(b);
+    const f = alongFactor(b);
     track.put(p[0], p[1], p[2],
-      az ? w : b.e[0] * 2 * 0.98, 0.02, az ? b.e[2] * 2 * 0.98 : w,
+      az ? w : b.e[0] * 2 * f, 0.02, az ? b.e[2] * 2 * f : w,
       r[0], r[1], r[2]);
   }
   g.add(track.seal());
@@ -406,7 +431,13 @@ export function buildStageProps(stage, weather) {
     beam.position.y = 3.4; frame.add(beam);
     const bell = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.62, 0.95, 12, 1, true), matBrass);
     bell.position.y = 2.75; frame.add(bell);
-    frame.position.set(pos[0] - 3.6, pos[1] - 0.9, pos[2]);
+    /* Stand it on the DECK, not on the ball. `pos` is a spawn or a goal, whose
+     * y is where the BALL's centre goes -- roughly a radius above the surface,
+     * and at the goal not even that. Offsetting from it left both bell frames
+     * hanging clear of the road. */
+    const fx = pos[0] - 3.6;
+    const ground = deckTopAt(fx, pos[2]);
+    frame.position.set(fx, ground === null ? pos[1] - 0.9 : ground - 0.04, pos[2]);
     frame.scale.setScalar(scale);
     g.add(frame);
   }

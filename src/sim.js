@@ -18,8 +18,13 @@ export const T = {
                         // Fast enough that the stage arrives at the angle you
                         // asked for in ~90ms; slower reads as input lag.
 
-  R_MAX: 0.55,          // radius at shell 1.0
-  R_MIN: 0.22,          // radius at shell 0.0
+  /* Scaled up 1.6x from 0.55/0.22 so the passenger inside the shell is big
+   * enough to actually look at. Everything that has to agree with it derives
+   * from these two numbers -- see shellForOpening() in stages.js, and GATE_OPEN
+   * and GRATE_GAP, which are scaled by the same factor so the shell thresholds
+   * the whole design rests on (0.545 and 0.273) come out unchanged. */
+  R_MAX: 0.88,          // radius at shell 1.0
+  R_MIN: 0.352,         // radius at shell 0.0
 
   ROLL_INERTIA: 5 / 7,  // solid sphere rolling without slipping: a = 5/7 g sin
   RESTITUTION: 0.16,    // floors

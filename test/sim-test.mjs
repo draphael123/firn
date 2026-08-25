@@ -139,7 +139,13 @@ t('a ball pressed into a wall keeps most of its along-wall speed', () => {
   sim.ball.v = { x: 0, y: 0, z: 12 };
   // hold a tilt that drives it forward AND hard into the wall
   for (let i = 0; i < 480; i++) sim.step(1 / 240, { x: 0.7, z: -1 });
-  ok(sim.ball.p.x > 4.3, `should be pinned against the wall, x=${sim.ball.p.x.toFixed(2)}`);
+  /* Where "pinned" IS depends on the ball's radius: it rests with its centre
+   * one radius off the wall face at x = 5. Hardcoding 4.3 meant this assert
+   * silently encoded a 0.55 ball, and it failed the moment the ball was
+   * resized -- reporting a physics regression that had not happened. */
+  const rest = 5.0 - S.T.R_MAX;
+  ok(sim.ball.p.x > rest - 0.15,
+    `should be pinned against the wall, x=${sim.ball.p.x.toFixed(2)} (rest ${rest.toFixed(2)})`);
   ok(sim.ball.v.z > 8, `should still be running along the wall, vz=${sim.ball.v.z.toFixed(2)}`);
   ok(sim.ball.p.z > 20, `should have travelled along it, z=${sim.ball.p.z.toFixed(1)}`);
 });
