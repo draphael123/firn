@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FIRN</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="description" content="Roll a sleeping thing, sealed in ice, down out of the cold. Every second of speed melts the only thing keeping it asleep.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink:    #05090c;
+    --deep:   #0b1318;
+    --slate:  #16222a;
+    --line:   rgba(168,200,212,.16);
+    --line2:  rgba(168,200,212,.30);
+    --ice:    #a8c8d4;
+    --bone:   #e8f0f3;
+    --dim:    #6d8894;
+    --ember:  #d4603a;
+    --gold:   #c9a961;
+    --serif:  'Instrument Serif', 'Iowan Old Style', Georgia, serif;
+    --mono:   'IBM Plex Mono', ui-monospace, Consolas, 'DejaVu Sans Mono', monospace;
+    --pad:    clamp(26px, 6.5vw, 116px);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden; background: var(--ink);
+    font-family: var(--mono); color: var(--bone);
+    -webkit-font-smoothing: antialiased;
+    touch-action: none; overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none;
+  }
+  #c { display: block; width: 100vw; height: 100vh; height: 100dvh; }
+  .hide { display: none !important; }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+
+  /* ------------------------------------------------------------ overlays */
+  #vig {
+    position: fixed; inset: 0; pointer-events: none; z-index: 2;
+    background: radial-gradient(ellipse 132% 104% at 50% 46%, transparent 56%, rgba(3,6,9,.50) 100%);
+  }
+  #fade {
+    position: fixed; inset: 0; pointer-events: none; z-index: 40;
+    background: var(--ink); opacity: 0; transition: opacity .34s ease;
+  }
+  #fade.on { opacity: 1; }
+
+  /* Screens sit over the 3D and scrim it from the LEFT, so the scene stays
+     visible on the right. A centred card would read as a web page. */
+  .screen {
+    position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column;
+    padding: 0 var(--pad); overflow-y: auto; scrollbar-width: none;
+    background:
+      linear-gradient(100deg, rgba(5,9,12,.97) 0%, rgba(5,9,12,.93) 38%, rgba(5,9,12,.62) 66%, rgba(5,9,12,.30) 100%);
+    animation: rise .3s ease both;
+  }
+  .screen::-webkit-scrollbar { width: 0; }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  /* Auto margins centre the column when it fits and let it scroll when it does
+     not. `justify-content: center` clips the TOP of an overflowing flex child,
+     which silently ate the settings heading on short viewports. */
+  .col { width: 100%; max-width: 620px; margin: auto 0; padding: 46px 0; }
+
+  /* ------------------------------------------------------------ type */
+  .eyebrow {
+    font-size: 10.5px; letter-spacing: .3em; text-transform: uppercase;
+    color: var(--ice); opacity: .6; font-weight: 400;
+  }
+  .rule { height: 1px; background: var(--line); margin: 16px 0 22px; }
+  .rule.tight { margin: 12px 0 14px; }
+
+  h1.wordmark {
+    font-family: var(--serif); font-weight: 400;
+    font-size: clamp(76px, 15vw, 188px); line-height: .84;
+    letter-spacing: .01em; color: var(--bone); margin: 6px 0 2px;
+  }
+  .sub {
+    font-family: var(--serif); font-style: italic;
+    font-size: clamp(17px, 2.1vw, 23px); line-height: 1.45;
+    color: var(--ice); opacity: .8; max-width: 30ch;
+  }
+  h2.head {
+    font-family: var(--serif); font-weight: 400; font-size: clamp(38px, 6vw, 62px);
+    line-height: 1; color: var(--bone); margin-bottom: 4px;
+  }
+  p.body { font-size: 13px; line-height: 1.75; color: var(--dim); max-width: 56ch; }
+  p.body + p.body { margin-top: 12px; }
+  p.body b { color: var(--ice); font-weight: 500; }
+  .ember { color: var(--ember); }
+  .gold  { color: var(--gold); }
+  .num   { font-variant-numeric: tabular-nums; }
+
+  /* ------------------------------------------------------------ menu list */
+  .menu { list-style: none; margin-top: 26px; }
+  .menu li {
+    position: relative; display: flex; align-items: baseline; gap: 16px;
+    padding: 9px 0 9px 22px; cursor: pointer; color: var(--dim);
+    font-size: 14px; letter-spacing: .12em; text-transform: uppercase;
+    transition: color .16s ease, transform .16s ease;
+  }
+  /* the marker is a hairline bar, not a filled pill -- selection should read
+     like a ruled entry in a ledger, not a button in a form */
+  .menu li::before {
+    content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+    width: 2px; height: 0; background: var(--ember); transition: height .16s ease;
+  }
+  .menu li[aria-selected="true"] { color: var(--bone); transform: translateX(4px); }
+  .menu li[aria-selected="true"]::before { height: 62%; }
+  .menu li[aria-disabled="true"] { color: #3a4a53; cursor: default; }
+  .menu li[aria-disabled="true"][aria-selected="true"] { color: #4e626d; }
+  .menu .idx {
+    font-family: var(--serif); font-size: 15px; letter-spacing: 0;
+    text-transform: none; color: var(--ice); opacity: .45; min-width: 26px;
+  }
+  .menu li[aria-selected="true"] .idx { opacity: .95; color: var(--ember); }
+  .menu .tail { margin-left: auto; font-size: 11px; letter-spacing: .16em; color: var(--dim); opacity: .7; }
+
+  /* ------------------------------------------------------------ rows (settings) */
+  .group { margin-top: 22px; }
+  .group > .eyebrow { display: block; margin-bottom: 8px; }
+  .row {
+    position: relative; display: flex; align-items: baseline; gap: 10px;
+    padding: 7px 0 7px 22px; cursor: pointer; color: var(--dim); font-size: 13px;
+    transition: color .16s ease;
+  }
+  .row::before {
+    content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+    width: 2px; height: 0; background: var(--ember); transition: height .16s ease;
+  }
+  .row[aria-selected="true"] { color: var(--bone); }
+  .row[aria-selected="true"]::before { height: 60%; }
+  .row .lbl { letter-spacing: .04em; white-space: nowrap; }
+  .row .dots {
+    flex: 1; height: 1px; align-self: center; margin: 0 2px;
+    background: repeating-linear-gradient(90deg, var(--line) 0 1px, transparent 1px 5px);
+  }
+  .row .val {
+    font-variant-numeric: tabular-nums; letter-spacing: .1em; color: var(--ice);
+    min-width: 118px; text-align: right; white-space: nowrap;
+  }
+  .row[aria-selected="true"] .val { color: var(--bone); }
+  .row[aria-selected="true"] .val::before { content: '‹ '; color: var(--ember); }
+  .row[aria-selected="true"] .val::after  { content: ' ›'; color: var(--ember); }
+
+  .hint {
+    margin-top: 26px; font-size: 10.5px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--dim); opacity: .55;
+  }
+  .hint kbd {
+    font: inherit; color: var(--ice); border: 1px solid var(--line2);
+    padding: 1px 5px; margin: 0 1px;
+  }
+
+  /* ------------------------------------------------------------ stage rows */
+  .stagerow { align-items: flex-start; padding-top: 12px; padding-bottom: 12px; }
+  .stagerow .idx {
+    font-family: var(--serif); font-size: 26px; line-height: 1; color: var(--ice);
+    opacity: .4; min-width: 44px; letter-spacing: 0; text-transform: none;
+  }
+  .stagerow[aria-selected="true"] .idx { opacity: 1; color: var(--ember); }
+  .stagerow .meta { display: flex; flex-direction: column; gap: 4px; }
+  .stagerow .nm { font-size: 14px; letter-spacing: .12em; text-transform: uppercase; }
+  .stagerow .best {
+    font-size: 10.5px; letter-spacing: .16em; color: var(--dim); text-transform: uppercase;
+    font-variant-numeric: tabular-nums;
+  }
+  .stagerow .best .v { color: var(--ice); }
+
+  /* ------------------------------------------------------------ HUD */
+  #hud { position: fixed; inset: 0; z-index: 6; pointer-events: none; }
+  #hud .tl { position: absolute; top: 22px; left: var(--pad); }
+  #hud .tr { position: absolute; top: 22px; right: var(--pad); text-align: right; }
+  #hud .bl { position: absolute; bottom: 26px; left: var(--pad); width: min(300px, 40vw); }
+  .hnum {
+    font-family: var(--serif); font-size: 40px; line-height: 1;
+    font-variant-numeric: tabular-nums; color: var(--bone);
+  }
+  .hlbl { font-size: 10px; letter-spacing: .26em; text-transform: uppercase; color: var(--ice); opacity: .55; }
+  #hud .tl .hlbl { margin-bottom: 3px; }
+  #stageName { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--bone); }
+
+  /* The shell bar is a thin ruled gauge with the two thresholds etched on it,
+     because those numbers ARE the game. */
+  #shellWrap { margin-top: 8px; position: relative; height: 8px; background: rgba(168,200,212,.10); }
+  #shellFill { position: absolute; inset: 0 auto 0 0; background: var(--ice); transition: width .1s linear; }
+  #shellWrap .tick { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--line2); }
+  #shellWrap .tick.gate  { background: rgba(232,240,243,.5); }
+  #shellWrap .tick.grate { background: var(--ember); }
+  #shellWrap.thin #shellFill { background: var(--gold); }
+  #shellWrap.bare #shellFill { background: var(--ember); }
+  #shellRow { display: flex; justify-content: space-between; align-items: baseline; }
+  #shellPct { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--ice); }
+  #meltRate { font-size: 10px; letter-spacing: .14em; color: var(--dim); text-transform: uppercase; }
+
+  #warn {
+    position: absolute; left: 50%; top: 15%; transform: translateX(-50%);
+    font-size: 12px; letter-spacing: .3em; text-transform: uppercase;
+    color: var(--ember); opacity: 0; transition: opacity .25s;
+    text-shadow: 0 0 18px rgba(0,0,0,.9);
+  }
+  #warn.on { opacity: .95; }
+  #edge {
+    position: fixed; inset: 0; z-index: 5; pointer-events: none;
+    box-shadow: inset 0 0 90px rgba(212,96,58,0); transition: box-shadow .3s;
+  }
+  #edge.on { box-shadow: inset 0 0 90px rgba(212,96,58,.42); }
+
+  /* ------------------------------------------------------------ result */
+  .stat { display: flex; align-items: baseline; gap: 14px; margin-top: 10px; }
+  .stat .k { font-size: 10.5px; letter-spacing: .24em; text-transform: uppercase; color: var(--ice); opacity: .6; min-width: 150px; }
+  .stat .v { font-family: var(--serif); font-size: 34px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .stat .n { font-size: 10.5px; letter-spacing: .18em; text-transform: uppercase; color: var(--gold); }
+
+  #bearerLine { margin-top: 20px; font-size: 12px; letter-spacing: .1em; color: var(--dim); }
+  #bearerLine b { color: var(--bone); font-weight: 500; letter-spacing: .16em; }
+
+  .foot {
+    position: fixed; left: var(--pad); bottom: 22px; z-index: 21;
+    font-size: 10px; letter-spacing: .2em; text-transform: uppercase;
+    color: var(--dim); opacity: .45;
+  }
+
+  #boot {
+    position: fixed; inset: 0; z-index: 60; display: flex; align-items: center;
+    padding: 0 var(--pad); background: var(--ink); color: var(--dim);
+    font-size: 12px; letter-spacing: .2em; text-transform: uppercase;
+  }
+
+  @media (max-width: 620px) {
+    :root { --pad: 20px; }
+    .row .val { min-width: 92px; }
+    #hud .bl { width: 62vw; }
+    .stat .k { min-width: 110px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="vig"></div>
+<div id="edge"></div>
+
+<!-- ------------------------------------------------------------------ HUD -->
+<div id="hud" class="hide">
+  <div class="tl">
+    <div class="hlbl">Stage</div>
+    <div id="stageName">—</div>
+  </div>
+  <div class="tr">
+    <div class="hlbl">Elapsed</div>
+    <div class="hnum" id="timeVal">0.0</div>
+  </div>
+  <div class="bl" id="shellBox">
+    <div id="shellRow">
+      <span class="hlbl">Shell remaining</span>
+      <span id="shellPct">100%</span>
+    </div>
+    <div id="shellWrap">
+      <div id="shellFill"></div>
+      <div class="tick gate"></div>
+      <div class="tick grate"></div>
+    </div>
+    <div id="meltRate">stable</div>
+  </div>
+  <div id="warn"></div>
+</div>
+
+<!-- ---------------------------------------------------------------- title -->
+<div class="screen" id="scr-title">
+  <div class="col">
+    <div class="eyebrow">A bearer&rsquo;s descent</div>
+    <h1 class="wordmark">FIRN</h1>
+    <div class="sub">You roll a sleeping thing, sealed in ice, down out of the cold. Every second of speed melts the only thing keeping it asleep.</div>
+    <ul class="menu" id="titleMenu">
+      <li data-act="begin"><span class="idx">i</span><span>Begin the descent</span></li>
+      <li data-act="route"><span class="idx">ii</span><span>The route</span><span class="tail" id="routeTail"></span></li>
+      <li data-act="settings"><span class="idx">iii</span><span>Settings</span></li>
+      <li data-act="rite"><span class="idx">iv</span><span>The rite</span></li>
+    </ul>
+    <div class="hint"><kbd>&uarr;</kbd><kbd>&darr;</kbd> choose &nbsp;·&nbsp; <kbd>Enter</kbd> confirm</div>
+  </div>
+</div>
+<div class="foot" id="foot"></div>
+
+<!-- ---------------------------------------------------------------- route -->
+<div class="screen hide" id="scr-route">
+  <div class="col">
+    <div class="eyebrow">The route</div>
+    <h2 class="head">Down, into warmth</h2>
+    <div class="rule"></div>
+    <ul class="menu" id="routeMenu"></ul>
+    <div class="hint"><kbd>Enter</kbd> descend &nbsp;·&nbsp; <kbd>Esc</kbd> back</div>
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------- settings -->
+<div class="screen hide" id="scr-settings">
+  <div class="col">
+    <div class="eyebrow">Settings</div>
+    <h2 class="head">Instruments</h2>
+    <div class="rule"></div>
+    <div id="settingsBody"></div>
+    <div class="hint"><kbd>&uarr;</kbd><kbd>&darr;</kbd> row &nbsp;·&nbsp; <kbd>&larr;</kbd><kbd>&rarr;</kbd> change &nbsp;·&nbsp; <kbd>Esc</kbd> back</div>
+  </div>
+</div>
+
+<!-- ----------------------------------------------------------------- rite -->
+<div class="screen hide" id="scr-rite">
+  <div class="col">
+    <div class="eyebrow">The rite</div>
+    <h2 class="head">How it is carried</h2>
+    <div class="rule"></div>
+    <p class="body"><b>You do not steer the ice. You tilt the world.</b> Hold a direction and the ground holds that angle — release and it levels. <kbd>WASD</kbd> or the arrow keys; a gamepad stick if you have one.</p>
+    <p class="body"><b>Speed is heat.</b> Friction and sunlight melt the shell, and the shell is the only thing keeping the thing inside asleep. Watch it clear: when you can see what you are carrying, you have gone too far.</p>
+    <p class="body"><b>A thinner shell is smaller.</b> Some gates admit only a ball that has melted down — so you may spend shell deliberately to buy a shortcut. <span class="ember">But a grate that held you at full thickness will not hold you when you are thin.</span></p>
+    <p class="body">When the shell is gone you keep rolling, bare and quick, one hard blow from waking it. Reach the ring and set it down.</p>
+    <div class="hint"><kbd>Esc</kbd> back</div>
+  </div>
+</div>
+
+<!-- ---------------------------------------------------------------- pause -->
+<div class="screen hide" id="scr-pause">
+  <div class="col">
+    <div class="eyebrow">Halted</div>
+    <h2 class="head" id="pauseStage">—</h2>
+    <div class="rule"></div>
+    <ul class="menu" id="pauseMenu">
+      <li data-act="resume"><span class="idx">i</span><span>Take it up again</span></li>
+      <li data-act="restart"><span class="idx">ii</span><span>Begin this stage anew</span></li>
+      <li data-act="settings"><span class="idx">iii</span><span>Settings</span></li>
+      <li data-act="quit"><span class="idx">iv</span><span>Set it down</span></li>
+    </ul>
+  </div>
+</div>
+
+<!-- --------------------------------------------------------------- result -->
+<div class="screen hide" id="scr-result">
+  <div class="col">
+    <div class="eyebrow" id="resEyebrow">—</div>
+    <h2 class="head" id="resHead">—</h2>
+    <div class="rule"></div>
+    <div id="resStats"></div>
+    <div id="bearerLine"></div>
+    <ul class="menu" id="resultMenu"></ul>
+  </div>
+</div>
+
+<div id="fade"></div>
+<div id="boot">Loading the ice&hellip;</div>
+
+<script type="module">
+  // Boot watchdog: three.js is vendored locally, but a module that throws
+  // still leaves a black screen with nothing to read. Say so instead.
+  const boot = document.getElementById('boot');
+  const timer = setTimeout(() => {
+    boot.textContent = 'FIRN failed to start. Check the console.';
+  }, 9000);
+  window.addEventListener('error', (e) => {
+    clearTimeout(timer);
+    boot.textContent = 'FIRN failed to start: ' + (e.message || 'unknown error');
+  });
+  import('./src/main.js')
+    .then((m) => { clearTimeout(timer); m.boot(); boot.remove(); })
+    .catch((err) => {
+      clearTimeout(timer);
+      boot.textContent = 'FIRN failed to start: ' + err.message;
+      console.error(err);
+    });
+</script>
+</body>
+</html>
