@@ -5,7 +5,7 @@
 A tilt-the-stage roller in the Monkey Ball tradition, with one substitution: where
 Monkey Ball trades speed against control, FIRN trades speed against *containment*.
 
-Play: <https://firn.vercel.app> · Dev: `python serve.py` → <http://localhost:5826>
+Play: <https://firn-game.vercel.app> · Dev: `python serve.py` → <http://localhost:5826>
 
 ---
 

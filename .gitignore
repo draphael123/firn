@@ -2,3 +2,5 @@ node_modules/
 .vercel/
 shot.png
 *.log
+
+.vercel
