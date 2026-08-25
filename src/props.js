@@ -20,45 +20,14 @@
 
 import * as THREE from '../vendor/three.module.js';
 import { mulberry32 } from './sim.js';
+import { GROUND_Y } from './worlds.js';
 
-export const SEA_Y = -74;
+// One source of truth for how far below the causeway the ground sits.
+const SEA_Y = GROUND_Y;
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const _c1 = new THREE.Color(), _c2 = new THREE.Color(), _cOut = new THREE.Color();
 const mixHex = (a, b, t) => _cOut.copy(_c1.setHex(a)).lerp(_c2.setHex(b), t).getHex();
-
-// ---------------------------------------------------------------- weather
-
-/**
- * Weather derived from the stage's own `warmth`, so the three stages read as
- * one descent instead of three test tracks -- and so you SEE the warmth that is
- * eating your shell before the gauge tells you about it.
- *
- * w = 0 is the cold stair (hard, clear, blue); w = 1 is the grate run (steam,
- * dirty haze, close horizon).
- */
-export function weatherFor(stage) {
-  const w = Math.max(0, Math.min(1, (stage.warmth || 0) / 0.009));
-  return {
-    w,
-    fog:      mixHex(0x7ba4bd, 0xa7a49a, w),
-    fogNear:  lerp(150, 46, w),
-    fogFar:   lerp(980, 430, w),
-    skyTop:   mixHex(0x0b2540, 0x2a3742, w),
-    skyMid:   mixHex(0x8fb3c8, 0xb0aca0, w),
-    skyBot:   mixHex(0x0d151a, 0x2b2a26, w),
-    keyColor: mixHex(0xdcecfa, 0xffe2bc, w),
-    keyPower: lerp(2.9, 2.0, w),
-    hemiSky:  mixHex(0x5f88a2, 0x8e8d84, w),
-    ambient:  lerp(1.4, 1.9, w),
-    snowCount: Math.round(lerp(2600, 900, w)),   // dry spindrift -> wet sleet
-    snowSize:  lerp(0.14, 0.26, w),
-    snowFall:  lerp(3.0, 8.5, w),
-    snowDrift: lerp(9.0, 2.2, w),
-    snowOpacity: lerp(0.46, 0.30, w),
-    steam: w,                                    // how much the vents give off
-  };
-}
 
 // ---------------------------------------------------------------- helpers
 
@@ -93,6 +62,24 @@ function span(m, ax, ay, az, bx, by, bz, thick) {
   m.put((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2, thick, thick, len, pitch, yaw, 0);
 }
 
+/** Soft round sprite. Untextured Points draw as hard squares, which read as
+ *  graphical litter rather than steam or snow. */
+let _soft = null;
+export function softSprite() {
+  if (_soft) return _soft;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 32;
+  const g = cv.getContext('2d');
+  const rg = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+  rg.addColorStop(0, 'rgba(255,255,255,1)');
+  rg.addColorStop(0.45, 'rgba(255,255,255,.5)');
+  rg.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = rg; g.fillRect(0, 0, 32, 32);
+  _soft = new THREE.CanvasTexture(cv);
+  _soft.colorSpace = THREE.SRGBColorSpace;
+  return _soft;
+}
+
 const ROCK = new THREE.IcosahedronGeometry(1, 0);
 const BOX = new THREE.BoxGeometry(1, 1, 1);
 const CONE = new THREE.ConeGeometry(1, 1, 6);
@@ -121,9 +108,14 @@ export function buildStageProps(stage, weather) {
   const g = new THREE.Group();
   const rnd = mulberry32(stage.id.length * 2749 + 61);
 
-  const matStone = new THREE.MeshStandardMaterial({ color: 0x7d8892, roughness: 0.92, flatShading: true });
-  const matDark  = new THREE.MeshStandardMaterial({ color: 0x3d474e, roughness: 0.8, metalness: 0.15 });
-  const matRope  = new THREE.MeshStandardMaterial({ color: 0x9fb0b8, roughness: 0.95 });
+  // Ironwork and stone are LOCAL: a fixed near-black reads as heavy bars laid
+  // over a pale world, and the piers end up dominating the frame.
+  const D = (weather && weather.deck) || { stone: 0x7d8892, rail: 0x4a555d };
+  const matStone = new THREE.MeshStandardMaterial({ color: D.stone, roughness: 0.92, flatShading: true });
+  const matDark  = new THREE.MeshStandardMaterial({ color: D.rail, roughness: 0.8, metalness: 0.15 });
+  // Rope picks up the local light too; a fixed pale grey reads as a laser
+  // line strung across a warm world.
+  const matRope  = new THREE.MeshStandardMaterial({ color: D.stone, roughness: 0.98 });
   const matIce   = new THREE.MeshStandardMaterial({ color: 0xc8e2ec, roughness: 0.3, flatShading: true });
   const matBrass = new THREE.MeshStandardMaterial({ color: 0xc9a961, roughness: 0.42, metalness: 0.75 });
 
@@ -158,9 +150,10 @@ export function buildStageProps(stage, weather) {
   }
   g.add(piers.seal(), braces.seal());
 
-  // ---- icicles under every deck edge
+  // ---- icicles under every deck edge, where it is cold enough for them
+  const cold = !weather || weather.band < 0.75;
   const icicles = bank(CONE, matIce, 900);
-  for (const b of deckList) {
+  for (const b of (cold ? deckList : [])) {
     const n = Math.floor((b.e[0] + b.e[2]) * 1.6);
     for (let i = 0; i < n; i++) {
       const onX = rnd() < 0.5;
@@ -222,6 +215,49 @@ export function buildStageProps(stage, weather) {
   }
   g.add(cairnStones.seal());
 
+  // ---- snow banked against the inside of every kerb, and capping it. The
+  // deck is what fills most of the frame while you play, so if it is bare it
+  // does not matter how frozen the horizon looks.
+  const icy = !weather || weather.band < 0.75;
+  if (icy) {
+    const snowMat = new THREE.MeshStandardMaterial({ color: 0xf1f8fb, roughness: 0.93, flatShading: true });
+    const drift = bank(ROCK, snowMat, 900);
+    const caps = bank(BOX, snowMat, 260);
+    for (const k of kerbList) {
+      const along = k.e[2] >= k.e[0];
+      const len = along ? k.e[2] * 2 : k.e[0] * 2;
+      caps.put(k.c[0], k.c[1] + k.e[1] - 0.03, k.c[2],
+        k.e[0] * 2 * 1.06, 0.16, k.e[2] * 2 * 1.06);
+      const n = Math.floor(len / 1.6);
+      for (let i = 0; i < n; i++) {
+        const t = (i + rnd() * 0.7) / n;
+        const px = along ? k.c[0] : k.c[0] - k.e[0] + t * len;
+        const pz = along ? k.c[2] - k.e[2] + t * len : k.c[2];
+        // wedge sits just inboard of the kerb, drifted up against it
+        const inb = (rnd() * 0.5 + 0.45) * (rnd() < 0.5 ? -1 : 1);
+        const w = 0.5 + rnd() * 1.1;
+        drift.put(px + (along ? inb : 0), k.c[1] - k.e[1] + 0.12, pz + (along ? 0 : inb),
+          along ? w * 0.8 : w * 1.7, 0.16 + rnd() * 0.30, along ? w * 1.7 : w * 0.8,
+          0, rnd() * 3, 0);
+      }
+    }
+    g.add(drift.seal(), caps.seal());
+  }
+
+  // ---- the worn track: generations of bearers have scoured the middle of the
+  // road bare. A path within the path, and the clearest possible racing line.
+  const trackMat = new THREE.MeshStandardMaterial({
+    color: icy ? 0x76858f : 0x413c37, roughness: 0.72, metalness: 0.05,
+  });
+  const track = bank(BOX, trackMat, 80);
+  for (const b of deckList) {
+    const along = b.e[2] >= b.e[0];
+    const w = Math.min(2.6, (along ? b.e[0] : b.e[2]) * 0.9);
+    track.put(b.c[0], b.c[1] + b.e[1] + 0.012, b.c[2],
+      along ? w : b.e[0] * 2 * 0.98, 0.02, along ? b.e[2] * 2 * 0.98 : w);
+  }
+  g.add(track.seal());
+
   // ---- a bell at the start and at the goal: the rite has a beginning and an end
   for (const [pos, scale] of [[stage.spawn, 1.0], [stage.goal, 1.35]]) {
     const frame = new THREE.Group();
@@ -276,7 +312,8 @@ export function buildWorldProps(stage, weather) {
   }
   g.add(shards.seal(), cores.seal());
 
-  // ---- floes: flat plates of ice drifting on the sheet
+  // ---- floes: sheet-ice furniture, so only where there IS a sheet
+  if (weather && weather.ground !== 'sea') return g;
   const floes = bank(new THREE.CylinderGeometry(1, 1, 1, 7), matFloe, 240);
   for (let i = 0; i < 240; i++) {
     const a = rnd() * Math.PI * 2, r = 60 + rnd() * 620;
@@ -329,8 +366,8 @@ export function buildVent(h, weather) {
   const sg = new THREE.BufferGeometry();
   sg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   const steam = new THREE.Points(sg, new THREE.PointsMaterial({
-    color: 0xe8d8cc, size: 1.5, sizeAttenuation: true,
-    transparent: true, opacity: 0.20, depthWrite: false,
+    color: 0xe8d8cc, size: 2.6, sizeAttenuation: true, map: softSprite(),
+    transparent: true, opacity: 0.16, depthWrite: false,
   }));
   steam.frustumCulled = false;
   steam.userData.spread = h.r * 0.3;

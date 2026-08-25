@@ -18,7 +18,8 @@ const GRATE_SHELL = shellForOpening(GRATE_GAP);
 
 let store, settings, view, audio, ui;
 let sim = null, stageIndex = 0;
-let mode = 'attract';          // attract | play | paused | over
+let mode = 'attract';          // attract | ready | play | paused | over
+let readyT = 0;
 let attractPilot = null;
 let last = 0, lastRender = 0, raf = 0;
 
@@ -73,8 +74,7 @@ function startStage(i) {
   view.snapCamera(sim);
   $('stageName').textContent = `${stage.numeral}. ${stage.name}`;
   ui.show(null, false);
-  mode = 'play';
-  audio.setBed(true);
+  arm(stage, 1.05);
   flash();
 }
 
@@ -83,8 +83,7 @@ function restart() {
   sim = SIM.createSim(stage, { seed: (store.bearer * 7919 + stageIndex * 104729) >>> 0 });
   view.snapCamera(sim);
   ui.show(null, false);
-  mode = 'play';
-  audio.setBed(true);
+  arm(STAGES[stageIndex], 0.62);   // shorter on a retry: never cost a second unasked
   flash();
 }
 
@@ -104,7 +103,7 @@ function finish() {
   if (won) isBest = store.record(stage.id, sim.time, sim.ball.shell);
   mode = 'over';
   audio.setBed(false);
-  if (won) audio.win(); else audio.lose(sim.reason);
+  if (won) { audio.win(); view.goalBurst(); burstFlash(); } else audio.lose(sim.reason);
   ui.buildRoute();
   ui.showResult({
     won, reason: sim.reason, stage, time: sim.time,
@@ -120,12 +119,38 @@ function startAttract() {
   view.snapCamera(sim);
 }
 
+/** The held beat: name the stage, then let go. Any key skips it. */
+function arm(stage, hold) {
+  mode = 'ready';
+  readyT = hold;
+  $('rdNum').textContent = stage.numeral;
+  $('rdName').textContent = stage.name;
+  $('rdEpi').textContent = stage.epigraph || '';
+  const r = $('ready');
+  r.classList.remove('hide');
+  r.style.animation = 'none'; void r.offsetWidth; r.style.animation = '';
+  audio.setBed(true);
+}
+
+function release() {
+  if (mode !== 'ready') return;
+  mode = 'play';
+  $('ready').classList.add('hide');
+  audio.blip(660, 0.06, 0.14);
+}
+
 /* Purely cosmetic: snap to black, then transition off over the next frame.
  * The fade used to gate the stage swap behind a deferred callback, which meant
  * one throw anywhere in stage setup left the screen black with the menu still
  * up and nothing in the console. State changes are synchronous now; this only
  * paints. It also makes restart genuinely instant, which the stage needs. */
 let flashTimer = 0;
+function burstFlash() {
+  const b = $('burst');
+  b.classList.remove('on'); void b.offsetWidth; b.classList.add('on');
+  setTimeout(() => b.classList.remove('on'), 1000);
+}
+
 function flash() {
   const f = $('fade');
   f.classList.remove('on');
@@ -168,6 +193,7 @@ function updateHud() {
   $('edge').classList.toggle('on', shell <= 0 || m > 0.06);
 
   $('shellBox').classList.toggle('hide', !settings.showMeter);
+  $('speed').style.opacity = Math.max(0, (view.speedFrac || 0) - 0.45) * 1.1;
 }
 
 // ---------------------------------------------------------------- loop
@@ -184,6 +210,14 @@ function frame(now) {
 /** Exposed so a harness (or a throttled tab) can advance without rAF. */
 export function step(dt) {
   if (!sim) return;
+
+  if (mode === 'ready') {
+    readyT -= dt;
+    view.update(sim, dt * 0.2);      // a slow drift, so the world is not frozen
+    updateHud();
+    if (readyT <= 0) release();
+    return;
+  }
 
   if (mode === 'play') {
     sim.step(dt, readInput());
@@ -207,6 +241,7 @@ function drainEvents() {
   for (const e of sim.events) {
     if (e.type === 'impact') {
       audio.impact(e.speed);
+      view.impact(e.speed);
       if (e.speed > 3) view.shake = Math.min(0.55, e.speed * 0.045);
     } else if (e.type === 'bare') {
       audio.bare();
@@ -252,6 +287,8 @@ export function boot() {
   window.addEventListener('keydown', (e) => {
     audio.start(); audio.resume();
     const k = e.key.toLowerCase();
+
+    if (mode === 'ready') { release(); e.preventDefault(); return; }
 
     if (k === 'escape' && mode === 'play') {
       mode = 'paused'; audio.setBed(false); ui.showPause(STAGES[stageIndex]);

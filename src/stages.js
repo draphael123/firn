@@ -111,6 +111,7 @@ const s1 = {
   id: 'stair',
   name: 'The Cold Stair',
   numeral: 'I',
+  world: 'neve',
   epigraph: 'It is colder here than anywhere you are going.',
   warmth: 0.0018,
   killY: -34,
@@ -148,7 +149,8 @@ const s1 = {
 const s2 = {
   id: 'thaw',
   name: 'The Thaw Gate',
-  numeral: 'II',
+  numeral: 'III',
+  world: 'frozensea',
   epigraph: 'The short way is only short if you are small enough to take it.',
   warmth: 0.004,
   killY: -30,
@@ -219,7 +221,8 @@ const s2 = {
 const s3 = {
   id: 'grate',
   name: 'The Grate Run',
-  numeral: 'III',
+  numeral: 'V',
+  world: 'geothermal',
   epigraph: 'Thin enough to pass. Not so thin that the floor forgets you.',
   warmth: 0.009,
   killY: -36,
@@ -274,5 +277,103 @@ const s3 = {
   ],
 };
 
-export const STAGES = [s1, s2, s3];
+
+// ================================================================ STAGE II
+
+/* The Icefall -- momentum on a descent, and the first time you leave the
+ * ground. Two ramps and a gap you must carry speed into. No gate and no grate:
+ * this stage is only about learning that speed is now something you keep. */
+const s2b = {
+  id: 'icefall',
+  name: 'The Icefall',
+  numeral: 'II',
+  world: 'icefall',
+  epigraph: 'Nothing here has settled. Neither should you.',
+  warmth: 0.003,
+  killY: -54,
+  spawn: [0, 1.0, -12],
+  goal: [0, -17.8, 118],
+  goalR: 2.0,
+  waypoints: [[0, 0, 10], [0, -4, 30], [0, -7, 50], [0, -11, 72], [0, -15, 96], [0, -19, 118]],
+  boxes: [
+    plate(-5, 5, -16, 14, 0),
+    railZ(-5.35, -16, 14, 0), railZ(5.35, -16, 14, 0), railX(-16.35, -5, 5, 0),
+
+    ...ramp(-5, 5, 14, 40, 0, -7),
+
+    plate(-5, 5, 40, 56, -7),
+    railZ(-5.35, 40, 56, -7), railZ(5.35, 40, 56, -7),
+
+    // the gap: leave at speed or do not leave at all
+    plate(-6, 6, 62, 84, -11),
+    railZ(-6.35, 62, 84, -11), railZ(6.35, 62, 84, -11),
+
+    ...ramp(-6, 6, 84, 108, -11, -19),
+
+    plate(-6, 6, 108, 124, -19),
+    railZ(-6.35, 108, 124, -19), railZ(6.35, 108, 124, -19),
+    railX(124.35, -6, 6, -19, 2.2),
+  ].flat(),
+  heat: [],
+};
+
+// ================================================================ STAGE IV
+
+/* The Cathedral -- the gate again, under a roof.
+ * Enclosed, so the horizon gives you nothing and the route must be read close
+ * up. Meltwater drips from the vault and pools warm on the road, which is what
+ * pays for the gate. Gentler than the Grate Run: there is no floor here that
+ * stops holding you, so overspending costs time rather than everything. */
+const s4 = {
+  id: 'cathedral',
+  name: 'The Cathedral',
+  numeral: 'IV',
+  world: 'cathedral',
+  epigraph: 'The roof weeps, and the road drinks it.',
+  warmth: 0.0065,
+  killY: -40,
+  spawn: [0, 1.0, -10],
+  goal: [0, 1.2, 106],
+  goalR: 2.2,
+  // fast: melt under the drip, then the low gate
+  waypoints: [[0, 0, 12], [0, 0, 34], [0, 0, 41], [0, 0, 60], [0, 0, 84], [0, 0, 106]],
+  meltAt: { x: 0, z: 37, until: 0.60 },
+  // slow: the ambulatory, around the outside
+  altRoute: [[0, 0, 12], [0, 0, 30], [-12, 0, 40], [-24, 0, 52], [-24, 0, 74],
+             [-14, 0, 84], [-6, 0, 90], [0, 0, 98], [0, 0, 106]],
+  boxes: [
+    plate(-5, 5, -14, 16, 0),
+    railZ(-5.35, -14, 16, 0), railZ(5.35, -14, 16, 0), railX(-14.35, -5, 5, 0),
+
+    // the nave: narrow, and the drip falls in the middle of it
+    plate(-4, 4, 16, 44, 0),
+    railZ(4.35, 16, 44, 0),
+    railZ(-4.35, 16, 36, 0),          // opens to the ambulatory at z = 36
+
+    // ---- the gate, straight ahead. The chute runs all the way to the
+    // crossing: stopping it short and letting the ambulatory's return plate
+    // overlap it put a kerb across its own exit.
+    ...gate(44, -4, 4, -3, 3, 0),
+    plate(-3, 3, 44, 88, 0),
+    railZ(-3.35, 44, 88, 0), railZ(3.35, 44, 88, 0),
+
+    // ---- the ambulatory: longer, no toll
+    plate(-28, -4, 36, 44, 0),
+    railX(35.65, -28, -4, 0), railX(44.35, -20, -4, 0),
+    plate(-28, -20, 44, 80, 0),
+    railZ(-28.35, 36, 88, 0), railZ(-19.65, 44, 80, 0),
+    plate(-28, -3, 80, 88, 0),
+    railX(79.65, -20, -3, 0), railX(88.35, -28, -8, 0),
+
+    // ---- both meet under the crossing
+    plate(-8, 8, 88, 96, 0),
+    railZ(-8.35, 88, 114, 0), railZ(8.35, 84, 114, 0),
+    plate(-8, 8, 96, 114, 0),
+    railX(114.35, -8, 8, 0, 2.2),
+  ].flat(),
+  // meltwater off the vault, pooling warm on the road before the gate
+  heat: [heat(0, 0.5, 37, 8.5, 0.155), heat(-24, 0.5, 62, 7, 0.02)],
+};
+
+export const STAGES = [s1, s2b, s2, s4, s3];
 export const stageById = (id) => STAGES.find((s) => s.id === id) || STAGES[0];

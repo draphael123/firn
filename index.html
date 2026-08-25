@@ -223,6 +223,43 @@
     position: fixed; inset: 0; z-index: 5; pointer-events: none;
     box-shadow: inset 0 0 90px rgba(212,96,58,0); transition: box-shadow .3s;
   }
+  /* The arrival: one white beat when the ice is set down. */
+  #burst {
+    position: fixed; inset: 0; z-index: 12; pointer-events: none; opacity: 0;
+    background: radial-gradient(ellipse 60% 50% at 50% 46%, rgba(255,250,235,.85), rgba(201,169,97,.25) 55%, transparent 80%);
+  }
+  #burst.on { animation: burstOut .9s ease-out both; }
+  @keyframes burstOut { from { opacity: 1; } to { opacity: 0; } }
+
+  /* Held beat before release. Short, and any key skips it, so a retry never
+     costs you a second you did not choose to spend. */
+  #ready {
+    position: fixed; inset: 0; z-index: 10; pointer-events: none;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; animation: rdIn .5s ease both;
+    /* the card has to survive being read over a bright ice field OR a dark vault */
+    background: radial-gradient(ellipse 46% 44% at 50% 50%, rgba(4,10,15,.62), transparent 72%);
+  }
+  @keyframes rdIn { from { opacity: 0; letter-spacing: .5em; } to { opacity: 1; } }
+  #ready .rd-num {
+    font-family: var(--serif); font-size: clamp(72px, 12vw, 168px); line-height: .9;
+    color: var(--bone); text-shadow: 0 4px 40px rgba(3,8,12,.9);
+  }
+  #ready .rd-name {
+    font-size: 13px; letter-spacing: .42em; text-transform: uppercase;
+    color: var(--ice); margin-top: 6px; text-shadow: 0 2px 14px rgba(3,8,12,.95);
+  }
+  #ready .rd-epi {
+    font-family: var(--serif); font-style: italic; font-size: clamp(15px, 1.8vw, 20px);
+    color: var(--ice); opacity: .8; margin-top: 18px; max-width: 34ch;
+    text-shadow: 0 2px 14px rgba(3,8,12,.95);
+  }
+
+  /* Speed rush: a cold draw-in at the edges above about half of top speed. */
+  #speed {
+    position: fixed; inset: 0; z-index: 4; pointer-events: none; opacity: 0;
+    background: radial-gradient(ellipse 78% 62% at 50% 50%, transparent 40%, rgba(190,225,240,.30) 78%, rgba(120,170,195,.42) 100%);
+  }
   #edge.on { box-shadow: inset 0 0 90px rgba(212,96,58,.42); }
 
   /* ------------------------------------------------------------ result */
@@ -258,6 +295,15 @@
 <canvas id="c"></canvas>
 <div id="vig"></div>
 <div id="edge"></div>
+<div id="speed"></div>
+<div id="burst"></div>
+
+<!-- the held beat before release -->
+<div id="ready" class="hide">
+  <div class="rd-num" id="rdNum">I</div>
+  <div class="rd-name" id="rdName">—</div>
+  <div class="rd-epi" id="rdEpi">—</div>
+</div>
 
 <!-- ------------------------------------------------------------------ HUD -->
 <div id="hud" class="hide">

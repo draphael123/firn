@@ -39,17 +39,48 @@ hard blow from waking it.
 
 **Failure is succession.** Each attempt is another named bearer in a long line.
 
+## Worlds
+
+Worlds are not skins — they are **bands of the descent**. The route runs down out
+of the cold into warmth, so each world sits lower and hotter than the last, and a
+world's `band` drives air, light and ground together. Stage difficulty, the melt
+economy and the look therefore move in the same direction by construction rather
+than being tuned into agreement.
+
+| | Stage | World | Character |
+|---|---|---|---|
+| I | The Cold Stair | Névé | Wind-scoured snowfield, sastrugi, whiteout |
+| II | The Icefall | Icefall | Broken blue blocks and crevasses; a gap you must carry speed into |
+| III | The Thaw Gate | Frozen Sea | The shelf: cracked sheet ice, floes, causeway on piers |
+| IV | The Cathedral | Cathedral | Enclosed. A vault, stalactites, meltwater pooling warm on the road |
+| V | The Grate Run | Geothermal | Black rock, fumaroles, ash haze — where the warmth comes from |
+
+Only the causeway tilts. Everything a world provides stays level, so the horizon
+is the fixed reference the tilt is read against. Adding a world is data plus, at
+most, one ground builder.
+
 ## Structure
 
 ```
 src/sim.js        physics, melt, wobble — no three.js, runs headless
-src/stages.js     the three stages, as data
+src/stages.js     the five stages, as data
+src/worlds.js     world descriptors, grounds, ridgelines, deck surfaces
+src/props.js      cairns, handline, piers, wrecks, vents — all instanced
+src/ball.js       the ice shell, the frost, and the passenger
 src/autopilot.js  waypoint pilot: verifies routes, drives the title screen
 src/render.js     three.js presentation
 src/ui.js         menus, settings, persistence
 src/main.js       boot, input, frame loop
-test/             invariants and course verification
+test/             invariants, course verification, stall probe
 ```
+
+### Why the ball has four layers
+
+A smooth featureless sphere does not read as rolling — it reads as *sliding*,
+because nothing on it moves as it turns. So: a refractive `ice` shell for the
+material, a flat-shaded `rime` coat whose patches make rotation legible **and**
+whose opacity is the shell gauge, a `crack` lattice that flashes on impact, and a
+`sleeper` that leans under load and braces on hits. Frost *is* the shell.
 
 ### The one structural idea
 

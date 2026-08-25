@@ -16,8 +16,10 @@
 
 import * as THREE from '../vendor/three.module.js';
 import { T, radiusFor, mulberry32 } from './sim.js';
-import { weatherFor, buildStageProps, buildWorldProps, buildVent, stepSteam,
-         buildFlock, stepFlock, SEA_Y } from './props.js';
+import { buildBall, updateBall, ballImpact } from './ball.js';
+import { buildStageProps, buildWorldProps, buildVent, stepSteam,
+         buildFlock, stepFlock } from './props.js';
+import { worldOf, gradeFor, buildGround, ridgeRing, deckTexture, GROUND_Y } from './worlds.js';
 
 const C = {
   fog:    0x0d151a,
@@ -59,92 +61,6 @@ function makeEnvironment(renderer) {
 
 /** How much of the stage tilt the camera offset inherits. See update(). */
 const CAM_TILT_FOLLOW = 0.62;
-
-/**
- * A ring of mountain silhouette. Heights come from layered sines with
- * seed-derived phases, so each ring is a different range rather than three
- * copies of one profile at different scales.
- */
-function ridgeRing(radius, baseY, height, segs, rnd, baseHex, peakHex) {
-  const ph = [rnd() * 6.283, rnd() * 6.283, rnd() * 6.283, rnd() * 6.283];
-  const hAt = (a) => Math.max(0.10, Math.min(1,
-      0.46
-    + 0.30 * Math.sin(a * 2 + ph[0])
-    + 0.18 * Math.sin(a * 5 + ph[1])
-    + 0.11 * Math.sin(a * 11 + ph[2])
-    + 0.06 * Math.sin(a * 23 + ph[3])));
-
-  const pos = [], col = [];
-  const cb = new THREE.Color(baseHex), cp = new THREE.Color(peakHex), c = new THREE.Color();
-  const push = (x, y, z, t) => {
-    pos.push(x, y, z);
-    c.copy(cb).lerp(cp, t);
-    col.push(c.r, c.g, c.b);
-  };
-  for (let i = 0; i < segs; i++) {
-    const a0 = (i / segs) * Math.PI * 2, a1 = ((i + 1) / segs) * Math.PI * 2;
-    const h0 = hAt(a0) * height, h1 = hAt(a1) * height;
-    const x0 = Math.cos(a0) * radius, z0 = Math.sin(a0) * radius;
-    const x1 = Math.cos(a1) * radius, z1 = Math.sin(a1) * radius;
-    // two triangles, wound so the INSIDE of the ring faces the camera
-    push(x0, baseY, z0, 0); push(x1, baseY, z1, 0); push(x1, baseY + h1, z1, 1);
-    push(x0, baseY, z0, 0); push(x1, baseY + h1, z1, 1); push(x0, baseY + h0, z0, 1);
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
-    vertexColors: true, side: THREE.DoubleSide, depthWrite: true, fog: true,
-  }));
-  m.frustumCulled = false;
-  return m;
-}
-
-/** Pale sheet ice, scored with leads and refrozen cracks. */
-function makeSeaTexture() {
-  const N = 1024;
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = N;
-  const g = cv.getContext('2d');
-  g.fillStyle = '#dbe9ef'; g.fillRect(0, 0, N, N);
-
-  const rnd = mulberry32(5150);
-  // broad floes
-  for (let i = 0; i < 150; i++) {
-    g.beginPath();
-    const x = rnd() * N, y = rnd() * N, r = 24 + rnd() * 130;
-    for (let k = 0; k <= 10; k++) {
-      const a = (k / 10) * Math.PI * 2;
-      const rr = r * (0.7 + rnd() * 0.5);
-      const px = x + Math.cos(a) * rr, py = y + Math.sin(a) * rr;
-      k ? g.lineTo(px, py) : g.moveTo(px, py);
-    }
-    g.closePath();
-    const v = 224 + Math.floor(rnd() * 26);
-    g.fillStyle = `rgb(${v},${v + 4},${v + 8})`;
-    g.fill();
-  }
-  // dark open leads
-  g.lineCap = 'round';
-  for (let i = 0; i < 90; i++) {
-    g.beginPath();
-    let x = rnd() * N, y = rnd() * N;
-    g.moveTo(x, y);
-    for (let k = 0; k < 7; k++) {
-      x += (rnd() - 0.5) * 190; y += (rnd() - 0.5) * 190;
-      g.lineTo(x, y);
-    }
-    g.strokeStyle = `rgba(96,132,150,${0.18 + rnd() * 0.35})`;
-    g.lineWidth = 0.7 + rnd() * 3.4;
-    g.stroke();
-  }
-  const t = new THREE.CanvasTexture(cv);
-  t.colorSpace = THREE.SRGBColorSpace;   // unflagged canvas textures render washed
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(9, 9);
-  t.anisotropy = 4;
-  return t;
-}
 
 /** A soft horizontal band, for haze lying on the ice. */
 function makeHazeTexture() {
@@ -259,6 +175,7 @@ export class View {
     this._ballWorld = new THREE.Vector3();
     this._ray = new THREE.Raycaster();
     this.vents = [];
+    this.burst = 0;
     this.flock = buildFlock();
     this.scene.add(this.flock);
     this.buildSpray();
@@ -320,66 +237,93 @@ export class View {
    * `decor` (seracs) is pinned in place so it passes by and gives speed a scale.
    */
   buildWorld() {
+    // `far` holds whatever the current world puts on the horizon and rides with
+    // the camera; `decor` holds landmarks pinned in place so they pass by.
     this.far = new THREE.Group();
     this.scene.add(this.far);
     this.decor = new THREE.Group();
     this.scene.add(this.decor);
-
-    const rnd = mulberry32(9161);
-
-    // --- the frozen sea, far below
-    const seaTex = makeSeaTexture();
-    const sea = new THREE.Mesh(
-      new THREE.PlaneGeometry(2200, 2200),
-      new THREE.MeshStandardMaterial({
-        map: seaTex, color: 0xb9d2dd, roughness: 0.62, metalness: 0.05,
-      }),
-    );
-    sea.rotation.x = -Math.PI / 2;
-    sea.position.y = SEA_Y;
-    this.far.add(sea);
-
-    // pressure ridges cracking the sheet: long low pale wedges
-    const crackGeo = new THREE.BoxGeometry(1, 1, 1);
-    const crackMat = new THREE.MeshStandardMaterial({ color: 0xdcecf2, roughness: 0.5 });
-    for (let i = 0; i < 90; i++) {
-      const m = new THREE.Mesh(crackGeo, crackMat);
-      const a = rnd() * Math.PI * 2, r = 40 + rnd() * 900;
-      m.position.set(Math.cos(a) * r, SEA_Y + 0.6, Math.sin(a) * r);
-      m.rotation.y = rnd() * Math.PI;
-      m.scale.set(6 + rnd() * 90, 1.2 + rnd() * 2.6, 1.4 + rnd() * 3);
-      this.far.add(m);
-    }
-
-    // --- three rings of ridgeline, palest and haziest furthest out
-    this.far.add(ridgeRing(300, SEA_Y, 120, 128, mulberry32(11), 0x2c4150, 0x9fbecd));
-    this.far.add(ridgeRing(520, SEA_Y, 210, 128, mulberry32(23), 0x3d5567, 0xbcd4e0));
-    this.far.add(ridgeRing(820, SEA_Y, 330, 96, mulberry32(37), 0x54707f, 0xd2e4ec));
-
-    // --- banded haze lying on the ice, so the ridges have air in front of them.
-    // Open cylinders centred on the camera: a flat plane goes edge-on as soon
-    // as you look along it, which reads as a card popping out of existence.
-    const hazeTex = makeHazeTexture();
+    this.ground = null;
+    this.hazeTex = makeHazeTexture();
     this.haze = [];
-    for (let i = 0; i < 4; i++) {
-      const r = 240 + i * 190;
-      const m = new THREE.Mesh(
-        new THREE.CylinderGeometry(r, r, 66 + i * 26, 40, 1, true),
-        new THREE.MeshBasicMaterial({
-          map: hazeTex.clone(), transparent: true, opacity: 0.20 - i * 0.035,
-          depthWrite: false, fog: false, side: THREE.BackSide,
-        }),
-      );
-      m.material.map.needsUpdate = true;
-      m.position.y = SEA_Y + 26 + i * 20;
-      m.frustumCulled = false;
-      this.haze.push(m);
-      this.far.add(m);
+  }
+
+  /**
+   * Swap the level world in. Everything here is world-scale and stays LEVEL --
+   * only the causeway tilts, so this is the fixed horizon the tilt reads
+   * against.
+   */
+  applyWorld(stage) {
+    const W = gradeFor(stage);
+    this.world = W;
+
+    for (let i = this.far.children.length - 1; i >= 0; i--) {
+      const c = this.far.children[i];
+      c.traverse?.((o) => o.geometry?.dispose());
+      this.far.remove(c);
     }
+    this.haze.length = 0;
+
+    this.far.add(buildGround(W));
+    if (W.ridges) {
+      let k = 0;
+      for (const [radius, height, base, peak] of W.ridges) {
+        this.far.add(ridgeRing(radius, height, GROUND_Y, 120, mulberry32(11 + k * 29), base, peak));
+        k++;
+      }
+    }
+    // haze bands, unless we are underground where there is no distance to fill
+    if (!W.ceiling) {
+      for (let i = 0; i < 4; i++) {
+        const r = 240 + i * 190;
+        const m = new THREE.Mesh(
+          new THREE.CylinderGeometry(r, r, 66 + i * 26, 40, 1, true),
+          new THREE.MeshBasicMaterial({
+            map: this.hazeTex, transparent: true, opacity: 0.20 - i * 0.035,
+            depthWrite: false, fog: false, side: THREE.BackSide,
+          }),
+        );
+        m.position.y = GROUND_Y + 26 + i * 20;
+        m.frustumCulled = false;
+        this.haze.push(m);
+        this.far.add(m);
+      }
+    }
+
+    // ---- air and light
+    this.scene.fog.color.setHex(W.fog);
+    this.scene.fog.near = W.fogNear;
+    this.scene.fog.far = W.fogFar;
+    this.renderer.setClearColor(W.fog, 1);
+    this.tintSky(W.sky[0], W.sky[1], W.sky[2]);
+    this.key.color.setHex(W.key);
+    this.key.intensity = W.keyPower;
+    this.hemi.color.setHex(W.hemi);
+    this.hemi.intensity = W.ambient;
+    this.renderer.toneMappingExposure = this.settings.exposure * (W.exposure / 1.8);
+    this.sky.visible = !W.ceiling;
+
+    // ---- the causeway is built of local stone, so it changes with the world
+    this.deckTex?.dispose();
+    this.deckTex = deckTexture(W);
+    for (const k of ['stone', 'stone2', 'rail', 'gate']) {
+      this.materials[k].map = this.deckTex;
+      this.materials[k].needsUpdate = true;
+    }
+    this.materials.stone.color.setHex(W.deck.stone);
+    this.materials.stone2.color.setHex(W.deck.stone2);
+    this.materials.rail.color.setHex(W.deck.rail);
+
+    // ---- what falls out of the sky here
+    this.snowMat.size = W.fallSize;
+    this.snowMat.opacity = W.fallOpacity;
+    this.snowMat.color.setHex(W.fall === 'ash' ? 0x6b6058 : W.fall === 'sleet' ? 0xc4d0d4 : 0xcfe3ea);
+    this.fallKind = W.fall;
   }
 
   /** Seracs: angular ice blocks shouldered up out of the sea along the route. */
   placeDecor(stage) {
+    const iceWorld = ['sea', 'crevasse', 'snowfield'].includes(this.world.ground);
     for (let i = this.decor.children.length - 1; i >= 0; i--) {
       const c = this.decor.children[i];
       c.geometry?.dispose();
@@ -387,10 +331,10 @@ export class View {
     }
     const rnd = mulberry32(stage.id.length * 7717 + 13);
     const mat = new THREE.MeshStandardMaterial({
-      color: 0xc2dae4, roughness: 0.42, metalness: 0.02, flatShading: true,
+      color: iceWorld ? 0xc2dae4 : 0x4a443d, roughness: 0.42, metalness: 0.02, flatShading: true,
     });
     const matDark = new THREE.MeshStandardMaterial({
-      color: 0x86a6b4, roughness: 0.55, metalness: 0.02, flatShading: true,
+      color: iceWorld ? 0x86a6b4 : 0x322e29, roughness: 0.55, metalness: 0.02, flatShading: true,
     });
 
     // span the route so they keep passing the whole way down
@@ -400,7 +344,7 @@ export class View {
       x0 = Math.min(x0, b.c[0]); x1 = Math.max(x1, b.c[0]);
     }
 
-    for (let i = 0; i < 120; i++) {
+    for (let i = 0; i < (iceWorld ? 120 : 40); i++) {
       const side = rnd() < 0.5 ? -1 : 1;
       // keep well clear of the causeway itself
       const x = (side < 0 ? x0 - 18 : x1 + 18) + side * rnd() * 260;
@@ -410,7 +354,7 @@ export class View {
         new THREE.IcosahedronGeometry(1, 0),
         rnd() < 0.35 ? matDark : mat,
       );
-      m.position.set(x, SEA_Y + h * 0.42, z);
+      m.position.set(x, GROUND_Y + h * 0.42, z);
       m.scale.set(4 + rnd() * 14, h, 4 + rnd() * 14);
       m.rotation.set(rnd() * 0.4 - 0.2, rnd() * Math.PI, rnd() * 0.4 - 0.2);
       this.decor.add(m);
@@ -431,41 +375,15 @@ export class View {
   }
 
   buildBall() {
-    const g = new THREE.SphereGeometry(1, 48, 32);
-    this.iceMat = this.settings.iceQuality === 'plain'
-      ? new THREE.MeshStandardMaterial({
-          color: C.ice, roughness: 0.18, metalness: 0.0,
-          transparent: true, opacity: 0.72,
-        })
-      : new THREE.MeshPhysicalMaterial({
-          color: C.ice, roughness: 0.12, metalness: 0.0,
-          transmission: 1.0, thickness: 1.0, ior: 1.31,
-          clearcoat: 0.6, clearcoatRoughness: 0.2,
-          attenuationColor: new THREE.Color(0x7fb3c8), attenuationDistance: 1.6,
-        });
-    this.ice = new THREE.Mesh(g, this.iceMat);
-    this.ice.castShadow = !!this.settings.shadows;
-
-    // The sleeper is a FIXED size -- exactly R_MIN. That is what makes shell 0
-    // read as "the ice is gone" rather than "the ball got small".
-    const sg = new THREE.IcosahedronGeometry(T.R_MIN * 0.9, 0);
-    this.sleeperMat = new THREE.MeshStandardMaterial({
-      color: C.sleeper, roughness: 0.55, metalness: 0.1,
-      emissive: new THREE.Color(C.gold), emissiveIntensity: 0.0,
-    });
-    this.sleeper = new THREE.Mesh(sg, this.sleeperMat);
-
-    this.ballGroup = new THREE.Group();
-    this.ballGroup.add(this.ice);
-    this.ballGroup.add(this.sleeper);
+    this.B = buildBall(this.settings);
+    this.ballGroup = this.B.group;
+    this.iceMat = this.B.iceMat;          // applySettings still reads this
     this.stageGroup.add(this.ballGroup);
-
-    // A faint pool of light under the ball so it never detaches from the floor.
-    this.glow = new THREE.PointLight(C.gold, 0.0, 8, 2);
-    this.ballGroup.add(this.glow);
   }
 
-  /** Snow thrown off the ball. The only near-field motion tied to your speed. */
+  /** Flash the fracture lattice and jolt the passenger. */
+  impact(speed) { ballImpact(this.B, speed); }
+
   buildSpray() {
     const N = 160;
     const pos = new Float32Array(N * 3);
@@ -551,19 +469,44 @@ export class View {
     for (let i = this.stageGroup.children.length - 1; i >= 0; i--) {
       const c = this.stageGroup.children[i];
       if (c === this.ballGroup) continue;
-      c.traverse?.((o) => { if (o.geometry && o.geometry !== this.ice.geometry) o.geometry.dispose(); });
+      c.traverse?.((o) => o.geometry?.dispose());
       this.stageGroup.remove(c);
     }
 
     this.solids.length = 0;
     this.lintels = [];
-    const box = new THREE.BoxGeometry(1, 1, 1);
+    /* One shared unit box would stretch the surface texture differently on
+     * every plate. Scale each box's UVs by its own size so a 6m kerb and a 60m
+     * plate show the same size of flagstone. Cached by size, so a stage with
+     * forty boxes builds a handful of geometries. */
+    const TILE = 7;
+    const uvCache = new Map();
+    const boxFor = (sx, sy, sz) => {
+      const key = `${sx.toFixed(1)}_${sy.toFixed(1)}_${sz.toFixed(1)}`;
+      let g = uvCache.get(key);
+      if (g) return g;
+      g = new THREE.BoxGeometry(1, 1, 1);
+      const uv = g.attributes.uv;
+      const per = [[sz, sy], [sz, sy], [sx, sz], [sx, sz], [sx, sy], [sx, sy]];
+      for (let f = 0; f < 6; f++) {
+        const su = per[f][0] / TILE, sv = per[f][1] / TILE;
+        for (let i = 0; i < 4; i++) {
+          const k = f * 4 + i;
+          uv.setXY(k, uv.getX(k) * su, uv.getY(k) * sv);
+        }
+      }
+      uv.needsUpdate = true;
+      uvCache.set(key, g);
+      return g;
+    };
+    const pick = mulberry32(stage.id.length * 131 + 7);
     for (const b of stage.boxes) {
       if (b.kind === 'grate') { this.addGrate(b); continue; }
       const mat = this.materials[b.kind] || this.materials.stone;
-      const m = new THREE.Mesh(box, b.kind === 'stone' && Math.random() < 0.35 ? this.materials.stone2 : mat);
+      const sx = b.e[0] * 2, sy = b.e[1] * 2, sz = b.e[2] * 2;
+      const m = new THREE.Mesh(boxFor(sx, sy, sz), b.kind === 'stone' && pick() < 0.35 ? this.materials.stone2 : mat);
       m.position.set(b.c[0], b.c[1], b.c[2]);
-      m.scale.set(b.e[0] * 2, b.e[1] * 2, b.e[2] * 2);
+      m.scale.set(sx, sy, sz);
       if (b.rot) m.rotation.set(b.rot[0], b.rot[1], b.rot[2]);
       m.receiveShadow = !!this.settings.shadows;
       m.castShadow = !!this.settings.shadows && b.kind !== 'stone';
@@ -575,21 +518,8 @@ export class View {
       this.solids.push(m);   // only real geometry occludes; decor must not
     }
 
-    // Weather is derived from the stage's own warmth, so the three stages read
-    // as one descent rather than three test tracks.
-    const wx = weatherFor(stage);
-    this.weather = wx;
-    this.scene.fog.color.setHex(wx.fog);
-    this.scene.fog.near = wx.fogNear;
-    this.scene.fog.far = wx.fogFar;
-    this.renderer.setClearColor(wx.fog, 1);
-    this.tintSky(wx.skyTop, wx.skyMid, wx.skyBot);
-    this.key.color.setHex(wx.keyColor);
-    this.key.intensity = wx.keyPower;
-    this.hemi.color.setHex(wx.hemiSky);
-    this.hemi.intensity = wx.ambient;
-    this.snowMat.size = wx.snowSize;
-    this.snowMat.opacity = wx.snowOpacity;
+    this.applyWorld(stage);
+    const wx = this.world;
 
     this.vents.length = 0;
     for (const h of stage.heat) this.addHeat(h, wx);
@@ -676,47 +606,7 @@ export class View {
     this.stageRoot.position.set(b.p.x, b.p.y, b.p.z);
     this.stageInner.position.set(-b.p.x, -b.p.y, -b.p.z);
 
-    // --- ball
-    this.ballGroup.position.set(b.p.x, b.p.y, b.p.z);
-    const r = b.r;
-    this.ice.scale.setScalar(r);
-    const shell = Math.max(0, b.shell);
-    // Thick ice is FROSTED and hides what it holds; thin ice is clear and shows
-    // it. Getting this the wrong way round -- clearing as it thickens -- throws
-    // away the one piece of telemetry the ball is supposed to carry.
-    if (this.iceMat.thickness !== undefined) {
-      // Transmission is what carries this: near-opaque frosted white at full
-      // shell, fully refractive at zero. Driving it with absorption instead
-      // made a thick ball DARK, which reads as a bowling ball, not ice.
-      this.iceMat.transmission = 1 - shell * 0.74;
-      this.iceMat.roughness = 0.05 + shell * 0.44;
-      this.iceMat.thickness = 0.15 + shell * 0.9;
-      this.iceMat.attenuationDistance = 1.4 + (1 - shell) * 6;
-    } else {
-      this.iceMat.roughness = 0.05 + shell * 0.44;
-      this.iceMat.opacity = 0.44 + shell * 0.56;
-    }
-
-    // the sleeper stirs: it glows as the ice thins, and jitters with agitation
-    const agit = Math.pow(1 - shell, T.WOBBLE_P);
-    this.sleeperMat.emissiveIntensity = agit * 1.5 + b.startle * 0.35;
-    this.glow.intensity = agit * 2.2 + b.startle * 0.8;
-    const jit = agit * 0.05 * r;
-    this.sleeper.position.set(
-      Math.sin(sim.time * 5.1) * jit,
-      Math.sin(sim.time * 4.3) * jit,
-      Math.cos(sim.time * 6.2) * jit,
-    );
-    this.sleeper.rotation.x += (0.4 + agit * 2.2) * dt;
-    this.sleeper.rotation.z += (0.3 + agit * 1.7) * dt;
-
-    // visual roll -- integrate the sim's angular velocity onto the ice
-    const w = b.spin;
-    const wl = Math.hypot(w.x, w.y, w.z);
-    if (wl > 1e-5) {
-      this._q.setFromAxisAngle(this._v.set(w.x / wl, w.y / wl, w.z / wl), wl * dt);
-      this.ice.quaternion.premultiply(this._q);
-    }
+    updateBall(this.B, sim, dt, this.settings);
 
     // --- camera. World up, always. Yaw follows travel, heavily lagged.
     this.ballGroup.getWorldPosition(this._ballWorld);
@@ -729,6 +619,15 @@ export class View {
       while (d < -Math.PI) d += Math.PI * 2;
       this.camYaw += d * Math.min(1, s.camFollow * dt * Math.min(1, speed / 7));
     }
+
+    // FOV widening is the cheapest strong speed cue available: the world
+    // stretches past the edges of the frame as you gather pace.
+    const fovWant = 52 + Math.min(12, speed * 0.62);
+    if (Math.abs(this.camera.fov - fovWant) > 0.01) {
+      this.camera.fov += (fovWant - this.camera.fov) * Math.min(1, 2.6 * dt);
+      this.camera.updateProjectionMatrix();
+    }
+    this.speedFrac = Math.min(1, speed / T.V_MAX);
 
     const dist = s.camDist + Math.min(6, speed * 0.32);
     const hgt = s.camHeight + Math.min(2.6, speed * 0.1);
@@ -810,7 +709,21 @@ export class View {
     stepFlock(this.flock, sim.time, this.camera.position.x, this.camera.position.z);
     this.updateSpray(sim, dt);
     this.updateSnow(dt);
-    if (this.goalGroup) this.goalGroup.rotation.y += dt * 0.35;
+    if (this.goalGroup) {
+      this.goalGroup.rotation.y += dt * (0.35 + this.burst * 6);
+      // the arrival: the ring opens out and lets go
+      if (this.burst > 0.001) {
+        this.burst = Math.max(0, this.burst - dt * 1.1);
+        const k = 1 + (1 - this.burst) * 2.6 * (this.burst > 0 ? 1 : 0);
+        this.goalGroup.scale.setScalar(1 + (1 - this.burst) * 1.8);
+        this.goalGroup.children.forEach((c) => {
+          if (c.material && c.material.opacity !== undefined) c.material.opacity = this.burst * 0.5;
+          if (c.isPointLight) c.intensity = 5 + this.burst * 40;
+        });
+      } else if (this.goalGroup.scale.x !== 1) {
+        this.goalGroup.scale.setScalar(1);
+      }
+    }
 
     // A gate that refuses you should say so in the world, not only the HUD.
     if (this.lintels.length) {
@@ -845,6 +758,9 @@ export class View {
     p.needsUpdate = true;
   }
 
+  /** The arrival. */
+  goalBurst() { this.burst = 1; }
+
   /** Drop the camera straight onto the ball, for stage start and restarts. */
   snapCamera(sim) {
     const b = sim.ball;
@@ -866,15 +782,13 @@ export class View {
     this.settings = settings;
     this.renderer.toneMappingExposure = settings.exposure;
     if (settings.iceQuality !== prevIce) {
-      this.iceMat.dispose();
-      const keep = this.ice.geometry;
       this.stageGroup.remove(this.ballGroup);
+      this.ballGroup.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
       this.buildBall();
-      keep.dispose?.();
     }
     this.renderer.shadowMap.enabled = !!settings.shadows;
     this.key.castShadow = !!settings.shadows;
-    this.ice.castShadow = !!settings.shadows;
+    this.B.ice.castShadow = !!settings.shadows;
     this.snowMat.opacity = settings.snow === 2 ? 0.62 : 0.42;
     this.snowMat.size = settings.snow === 2 ? 0.2 : 0.14;
   }
