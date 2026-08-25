@@ -120,6 +120,7 @@ export class View {
     this.camera = new THREE.PerspectiveCamera(52, 1, 0.1, 1400);
     this.camera.position.set(0, 12, -18);
     this.addSky();
+    this.addSun();
 
     // --- light. A cold key from high behind, a dim warm bounce from below.
     const hemi = new THREE.HemisphereLight(0x5b7f92, 0x1b262c, 1.5);
@@ -128,15 +129,26 @@ export class View {
     const key = new THREE.DirectionalLight(0xe8f2f7, 2.6);
     key.position.set(-40, 70, -30);
     key.castShadow = !!settings.shadows;
+    /* The shadow camera is an orthographic box that has to CONTAIN what it
+     * shadows. Parked at the world origin at +-70 it covered the first third of
+     * a stage and nothing else: everything past that was lit with no contact
+     * shadow at all, which is exactly why props read as pasted onto the deck
+     * rather than sitting on it. It follows the ball now, so the box can also
+     * be smaller -- and a smaller box over the same 2048 map is sharper. */
     if (key.castShadow) {
-      key.shadow.mapSize.set(1024, 1024);
-      const d = 70;
+      key.shadow.mapSize.set(2048, 2048);
+      const d = 46;
       key.shadow.camera.left = -d; key.shadow.camera.right = d;
       key.shadow.camera.top = d; key.shadow.camera.bottom = -d;
-      key.shadow.camera.far = 260; key.shadow.bias = -0.0012;
+      key.shadow.camera.near = 1;
+      key.shadow.camera.far = 220;
+      key.shadow.bias = -0.0006;
+      key.shadow.normalBias = 0.035;
     }
     this.scene.add(key);
+    this.scene.add(key.target);          // a DirectionalLight aims at its target
     this.key = key;
+    this.keyOffset = new THREE.Vector3(-34, 62, -26);
     const rim = new THREE.DirectionalLight(0x6d8894, 0.55);
     rim.position.set(30, 18, 60);
     this.scene.add(rim);
@@ -222,6 +234,13 @@ export class View {
       const h = pos.getY(i) / 700;
       if (h > 0) c.copy(mid).lerp(top, Math.pow(h, 0.55));
       else c.copy(mid).lerp(bot, Math.pow(-h, 0.35));
+      /* Cloud banding. A pure vertical ramp reads as a painted backdrop rather
+       * than as air; a few soft bands, strongest near the horizon where cloud
+       * actually stacks up, are enough to put depth in it. */
+      if (h > -0.05) {
+        const band = Math.sin(h * 24) * 0.5 + Math.sin(h * 57 + 1.7) * 0.3;
+        c.offsetHSL(0, 0, band * 0.032 * Math.max(0, 1 - Math.abs(h) * 2.6));
+      }
       col.setXYZ(i, c.r, c.g, c.b);
     }
     col.needsUpdate = true;
@@ -361,6 +380,38 @@ export class View {
       m.rotation.set(rnd() * 0.4 - 0.2, rnd() * Math.PI, rnd() * 0.4 - 0.2);
       this.decor.add(m);
     }
+  }
+
+  /** A soft additive billboard. Stands in for bloom, which would need a post
+   *  chain the vendored three core does not ship. */
+  static glowSprite(color, size, opacity) {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 64;
+    const g = cv.getContext('2d');
+    const rg = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    rg.addColorStop(0, 'rgba(255,255,255,1)');
+    rg.addColorStop(0.25, 'rgba(255,255,255,.55)');
+    rg.addColorStop(0.6, 'rgba(255,255,255,.13)');
+    rg.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = rg; g.fillRect(0, 0, 64, 64);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: tex, color, transparent: true, opacity,
+      depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+    }));
+    spr.scale.setScalar(size);
+    return spr;
+  }
+
+  /** The sun, and the haze around it. A pure vertical ramp has no light IN it. */
+  addSun() {
+    this.sun = new THREE.Group();
+    const disc = View.glowSprite(0xfff4e0, 44, 0.85);
+    const halo = View.glowSprite(0xdfeaf6, 190, 0.28);
+    this.sun.add(halo, disc);
+    this.sun.frustumCulled = false;
+    this.scene.add(this.sun);
   }
 
   buildMaterials() {
@@ -664,6 +715,10 @@ export class View {
     l.position.set(h.p[0], h.p[1] + 1.5, h.p[2]);
     this.stageGroup.add(l);
 
+    const gl = View.glowSprite(C.ember, h.r * 0.85, 0.32);
+    gl.position.set(h.p[0], h.p[1] + 0.6, h.p[2]);
+    this.stageGroup.add(gl);
+
     // a scorched halo on the deck, so the reach of the heat is legible
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(h.r * 0.3, h.r * 0.98, 40),
@@ -689,6 +744,7 @@ export class View {
     shaft.position.y = 13;
     g.add(shaft);
     g.add(new THREE.PointLight(C.gold, 5, 22, 2));
+    g.add(View.glowSprite(C.gold, 9, 0.5));       // stands in for bloom
     g.position.set(stage.goal[0], stage.goal[1], stage.goal[2]);
     this.stageGroup.add(g);
     this.goalGroup = g;
@@ -708,6 +764,15 @@ export class View {
     updateBall(this.B, sim, dt, this.settings);
 
     this.director.update(this, sim, dt);
+
+    // Carry the shadow box with the ball, or it only shadows the start.
+    // the sun sits far off along the key light's own direction
+    this.sun.position.copy(this._ballWorld)
+      .addScaledVector(this.keyOffset, 7.5);
+
+    this.key.position.copy(this._ballWorld).add(this.keyOffset);
+    this.key.target.position.copy(this._ballWorld);
+    this.key.target.updateMatrixWorld();
 
     // The sea, ridges and haze ride with the camera horizontally so they never
     // run out; their height is fixed, so they still read as far below.

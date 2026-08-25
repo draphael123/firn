@@ -89,9 +89,19 @@ function ramp(x0, x1, z0, z1, topA, topB, opts = {}) {
  */
 function arc(cx, cz, radius, a0, a1, width, top, opts = {}) {
   const sweep = a1 - a0;
-  const n = Math.max(3, Math.round(Math.abs(sweep) / 0.18));
+  const n = Math.max(4, Math.round(Math.abs(sweep) / 0.11));
   const out = [];
-  const segLen = Math.abs(sweep) / n * radius * 1.10;   // overlap, so no seams
+  /* Segment length is set by the OUTER radius, not the centreline.
+   *
+   * A straight chord spans the same length at every radius, but the curve it
+   * stands in needs MORE length the further out you go. Sizing from the centre
+   * left a gap at the outer edge of every junction -- 0.87 units on the
+   * tutorial's chicane, against a ball 0.44 to 1.10 across -- so the ball caught
+   * on the vertical leading face of the next segment all the way round the
+   * bend. Sizing from the outer edge overlaps everywhere instead, and since
+   * every segment shares one top height the overlap is coplanar: no ridge, no
+   * seam, nothing to catch. */
+  const segLen = Math.abs(sweep) / n * (radius + width / 2) * 1.18;
   const sides = opts.rails === 'outer' ? [1] : opts.rails === 'inner' ? [-1] : [-1, 1];
   for (let i = 0; i < n; i++) {
     const tm = a0 + sweep * (i + 0.5) / n;
@@ -214,7 +224,7 @@ const s0 = {
     railZ(13.65, 74, 106, 6, 2.0),
 
     // room 4: warm ground, where the gauge first moves
-    plate(14, 26, 106, 122, 6, 'warm'),
+    plate(14, 26, 104, 122, 6, 'warm'),
 
     // room 5: the gate, with a way around it for anyone who wants one
     ...gate(122, 14, 26, 17, 23, 6),
@@ -227,7 +237,7 @@ const s0 = {
     plate(-4, 23, 146, 162, 8),
     railX(162.35, -4, 23, 8, 2.4), railZ(23.35, 132, 162, 8, 2.0),
   ].flat(),
-  heat: [heat(20, 6, 114, 9, 0.17)],
+  heat: [heat(20, 6, 113, 11, 0.30)],
 };
 
 // ============================================================ I. KILN ROAD

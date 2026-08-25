@@ -315,9 +315,14 @@ export function buildGround(world) {
     return m;
   };
 
+  /* Roughness carries altitude: low ground is wet and reflective because it is
+   * melting, high ground is dry and matte. A world where every surface answers
+   * light identically looks like one material tinted six ways. */
+  const wet = world.band;
   if (world.ground === 'sea') {
     g.add(plate(new THREE.MeshStandardMaterial({
-      map: sheetIceTexture(), color: world.groundColor, roughness: 0.62, metalness: 0.05,
+      map: sheetIceTexture(), color: world.groundColor,
+      roughness: 0.62 - wet * 0.28, metalness: 0.05 + wet * 0.15,
     })));
     const ridgeMat = new THREE.MeshStandardMaterial({ color: 0xdcecf2, roughness: 0.5 });
     const b = bank(new THREE.BoxGeometry(1, 1, 1), ridgeMat, 120);
@@ -381,7 +386,9 @@ export function buildGround(world) {
     // rock and meltwater -- keying this on band gave it glowing fissures.
     const hot = world.id === 'geothermal';
     g.add(plate(new THREE.MeshStandardMaterial({
-      map: rockTexture(hot), color: world.groundColor, roughness: 0.95,
+      map: rockTexture(hot), color: world.groundColor,
+      roughness: hot ? 0.95 : 0.55,          // the thaw is wet rock, and shines
+      metalness: hot ? 0.0 : 0.12,
     })));
     const mat = new THREE.MeshStandardMaterial({ color: hot ? 0x1c1815 : 0x63665e, roughness: 0.95, flatShading: true });
     const b = bank(ROCKG, mat, 460);

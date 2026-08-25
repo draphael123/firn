@@ -95,6 +95,68 @@ function kerbs(stage) {
   return stage.boxes.filter((b) => b.kind === 'rail');
 }
 
+
+/**
+ * Snow on the upward faces, baked into vertex colours.
+ *
+ * A solid-coloured flat-shaded block is the most prototype-looking thing there
+ * is: real objects out here are pale where snow settles and dark where it does
+ * not. Vertex colours MULTIPLY the material colour, so the material is set to
+ * the snow tone and the sides are scaled DOWN toward the rock tone -- lightening
+ * is not available, only darkening, which decides the direction of the trick.
+ */
+export function capTops(geo, rockHex, snowHex) {
+  const g = geo.index ? geo.toNonIndexed() : geo.clone();
+  g.computeVertexNormals();
+  const nrm = g.attributes.normal, pos = g.attributes.position;
+  const rock = new THREE.Color(rockHex), snow = new THREE.Color(snowHex);
+  const ratio = new THREE.Color(
+    Math.min(1, rock.r / Math.max(1e-3, snow.r)),
+    Math.min(1, rock.g / Math.max(1e-3, snow.g)),
+    Math.min(1, rock.b / Math.max(1e-3, snow.b)),
+  );
+  const col = new Float32Array(pos.count * 3);
+  const c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const up = Math.max(0, nrm.getY(i));
+    const t = Math.min(1, Math.pow(up, 1.6) * 1.35);   // only near-flat tops hold snow
+    c.copy(ratio).lerp(WHITE, t);
+    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return g;
+}
+const WHITE = new THREE.Color(1, 1, 1);
+
+/**
+ * Contact darkening, faked. Nothing sells "sitting on" like the ground going
+ * dark where an object meets it, and the alternative -- real ambient occlusion
+ * -- means a depth pre-pass this game has no business paying for. A gradient
+ * quad under MultiplyBlending costs one draw call for the whole route.
+ */
+let _aoTex = null;
+function aoTexture() {
+  if (_aoTex) return _aoTex;
+  const N = 64;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = N;
+  const g = cv.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 0, N);
+  grad.addColorStop(0, '#6a6a6a');       // hard against the kerb
+  grad.addColorStop(0.45, '#c8c8c8');
+  grad.addColorStop(1, '#ffffff');       // and gone a metre away
+  g.fillStyle = grad; g.fillRect(0, 0, N, N);
+  _aoTex = new THREE.CanvasTexture(cv);
+  _aoTex.colorSpace = THREE.SRGBColorSpace;
+  return _aoTex;
+}
+function aoMaterial() {
+  return new THREE.MeshBasicMaterial({
+    map: aoTexture(), transparent: true, blending: THREE.MultiplyBlending,
+    depthWrite: false, fog: true,
+  });
+}
+
 // ------------------------------------------------------ props ON the causeway
 
 export function buildStageProps(stage, weather) {
@@ -105,6 +167,12 @@ export function buildStageProps(stage, weather) {
   // over a pale world, and the piers end up dominating the frame.
   const D = (weather && weather.deck) || { stone: 0x7d8892, rail: 0x4a555d };
   const matStone = new THREE.MeshStandardMaterial({ color: D.stone, roughness: 0.92, flatShading: true });
+  /* A SEPARATE material for snow-capped geometry. matStone also dresses the kerb
+   * capstones, whose plain box geometry carries no colour attribute -- and
+   * vertexColors on a geometry without one renders black. */
+  const matCapped = new THREE.MeshStandardMaterial({
+    color: 0xeff6fa, roughness: 0.9, flatShading: true, vertexColors: true,
+  });
   const matDark  = new THREE.MeshStandardMaterial({ color: D.rail, roughness: 0.8, metalness: 0.15 });
   const matRope  = new THREE.MeshStandardMaterial({ color: D.stone, roughness: 0.98 });
   const matIce   = new THREE.MeshStandardMaterial({ color: 0xc8e2ec, roughness: 0.3, flatShading: true });
@@ -225,8 +293,26 @@ export function buildStageProps(stage, weather) {
   }
   g.add(posts.seal(), rope.seal(), caps.seal());
 
+  // ---- contact darkening where the deck meets every kerb
+  const AOQ = new THREE.PlaneGeometry(1, 1);
+  const ao = bank(AOQ, aoMaterial(), 260);
+  for (const k of kerbList) {
+    const az = alongZ(k);
+    const len = (az ? k.e[2] : k.e[0]) * 2;
+    if (len < 4) continue;
+    const r = rot(k);
+    for (const sgn of [-1, 1]) {
+      const inb = sgn * ((az ? k.e[0] : k.e[2]) + 0.85);
+      const p = pt(k, az ? inb : 0, -k.e[1] + 0.03, az ? 0 : inb);
+      // the gradient runs along the quad's local +Y, so face it up and turn it
+      ao.put(p[0], p[1], p[2], az ? 1.8 : len, az ? len : 1.8, 1,
+        -Math.PI / 2, r[1], az ? (sgn > 0 ? Math.PI : 0) : (sgn > 0 ? -Math.PI / 2 : Math.PI / 2));
+    }
+  }
+  g.add(ao.seal());
+
   // ---- cairns: a bearer apiece, stacked at the edges where you can see them
-  const cairnStones = bank(ROCK, matStone, 300);
+  const cairnStones = bank(capTops(ROCK, D.stone, 0xeff6fa), matCapped, 300);
   for (const k of kerbList) {
     const az = alongZ(k);
     const len = (az ? k.e[2] : k.e[0]) * 2;
@@ -252,6 +338,7 @@ export function buildStageProps(stage, weather) {
   // the frame while you play; a bare one undoes any amount of frozen horizon.
   if (icy) {
     const snowMat = new THREE.MeshStandardMaterial({ color: 0xf1f8fb, roughness: 0.93, flatShading: true });
+    snowMat.vertexColors = false;
     const drift = bank(ROCK, snowMat, 1200);
     for (const k of kerbList) {
       const az = alongZ(k);
