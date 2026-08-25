@@ -181,3 +181,88 @@ export class Audio {
     else { this.blip(220, 0.07, 0.7, 'sine'); this.thump(44, 0.16, 0.8); }
   }
 }
+
+/* -------------------------------------------------------------------- music
+ *
+ * Kevin MacLeod (incompetech.com), CC-BY 4.0. Attribution is in the README and
+ * on the rite screen; it is a licence condition, not a courtesy.
+ *
+ * Streamed through HTMLAudioElement rather than decoded into WebAudio buffers:
+ * these are multi-megabyte files and decoding them all up front would stall the
+ * first frames for no benefit. Tracks load the first time they are asked for,
+ * so booting costs only the title track.
+ */
+const TRACKS = {
+  title: 'music/title.mp3',   // "Lightless Dawn"
+  cold:  'music/cold.mp3',    // "Ice Flow"
+  vault: 'music/vault.mp3',   // "Frozen Star"
+  ember: 'music/ember.mp3',   // "Impact Lento"
+};
+
+/** Which score belongs to which band of the descent. */
+export const TRACK_FOR_WORLD = {
+  neve: 'cold', icefall: 'cold', frozensea: 'cold',
+  cathedral: 'vault', geothermal: 'ember', thaw: 'ember',
+};
+
+export class Music {
+  constructor(settings) {
+    this.s = settings;
+    this.els = {};
+    this.cur = null;       // { name, el, gain }
+    this.prev = null;      // fading out
+    this.want = null;
+    this.enabled = true;
+  }
+
+  el(name) {
+    if (this.els[name]) return this.els[name];
+    // NOT `new Audio()`: this module exports a class called Audio, which
+    // shadows the global HTMLAudioElement constructor inside this file. That
+    // silently builds a sound engine instead of a media element.
+    const a = document.createElement('audio');
+    a.src = TRACKS[name];
+    a.loop = true;
+    a.preload = 'none';
+    a.volume = 0;
+    this.els[name] = a;
+    return a;
+  }
+
+  /** Crossfade to a track. Safe to call every frame with the same name. */
+  play(name) {
+    if (!name || !TRACKS[name] || this.want === name) return;
+    this.want = name;
+    if (this.cur && this.cur.name === name) return;
+    if (this.cur) { this.prev = this.cur; }
+    const el = this.el(name);
+    this.cur = { name, el, gain: 0 };
+    el.volume = 0;
+    // Autoplay is gated until a gesture; a rejected promise here is normal and
+    // the next call after the first keypress succeeds.
+    el.play().catch(() => {});
+  }
+
+  stop() {
+    this.want = null;
+    if (this.cur) { this.prev = this.cur; this.cur = null; }
+  }
+
+  /** dt-driven so a throttled tab never leaves a track stuck half faded. */
+  update(dt) {
+    const vol = this.enabled ? (this.s.volMaster / 10) * (this.s.volMusic / 10) : 0;
+    const rate = 0.85;
+    if (this.cur) {
+      this.cur.gain = Math.min(1, this.cur.gain + dt / rate);
+      this.cur.el.volume = Math.max(0, Math.min(1, this.cur.gain * vol));
+      if (this.cur.el.paused && vol > 0) this.cur.el.play().catch(() => {});
+    }
+    if (this.prev) {
+      this.prev.gain = Math.max(0, this.prev.gain - dt / rate);
+      this.prev.el.volume = Math.max(0, Math.min(1, this.prev.gain * vol));
+      if (this.prev.gain <= 0) { this.prev.el.pause(); this.prev = null; }
+    }
+  }
+
+  applySettings(s) { this.s = s; }
+}

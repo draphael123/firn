@@ -17,8 +17,9 @@
 import * as THREE from '../vendor/three.module.js';
 import { T, radiusFor, mulberry32 } from './sim.js';
 import { buildBall, updateBall, ballImpact } from './ball.js';
+import { Director } from './camera.js';
 import { buildStageProps, buildWorldProps, buildVent, stepSteam,
-         buildFlock, stepFlock } from './props.js';
+         buildFlock, stepFlock, softSprite } from './props.js';
 import { worldOf, gradeFor, buildGround, ridgeRing, deckTexture, GROUND_Y } from './worlds.js';
 
 const C = {
@@ -169,16 +170,17 @@ export class View {
     this.camYaw = 0;
     this.camPos = new THREE.Vector3();
     this.camLook = new THREE.Vector3();
-    this.shake = 0;
     this._q = new THREE.Quaternion();
     this._v = new THREE.Vector3();
     this._ballWorld = new THREE.Vector3();
     this._ray = new THREE.Raycaster();
+    this.director = new Director(this.camera, settings);
     this.vents = [];
     this.burst = 0;
     this.flock = buildFlock();
     this.scene.add(this.flock);
     this.buildSpray();
+    this.buildChips();
   }
 
   /** A gradient dome instead of a flat clear colour. A stage floating in a
@@ -382,7 +384,10 @@ export class View {
   }
 
   /** Flash the fracture lattice and jolt the passenger. */
-  impact(speed) { ballImpact(this.B, speed); }
+  impact(sim, speed) {
+    ballImpact(this.B, speed);
+    this.landingPuff(sim, speed);
+  }
 
   buildSpray() {
     const N = 160;
@@ -428,6 +433,100 @@ export class View {
       if (a[j + 1] < b.p.y - 3) a[j + 1] = -999;
     }
     this.spray.geometry.attributes.position.needsUpdate = true;
+  }
+
+  /** Flakes shed by the ice itself as it melts, and a vapour wake at speed.
+   *  Both are tied to values the player is already watching, so they read as
+   *  information rather than confetti. */
+  buildChips() {
+    const mk = (n, mat) => {
+      const pos = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) pos[i * 3 + 1] = -9999;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const p = new THREE.Points(g, mat);
+      p.frustumCulled = false;
+      this.stageGroup.add(p);
+      return p;
+    };
+    this.chips = mk(140, new THREE.PointsMaterial({
+      color: 0xdff2fa, size: 0.11, sizeAttenuation: true,
+      transparent: true, opacity: 0.9, depthWrite: false,
+    }));
+    this.chipV = new Float32Array(140 * 3);
+    this.chipN = 140; this.chipAt = 0;
+
+    this.trail = mk(90, new THREE.PointsMaterial({
+      color: 0xd8ecf5, size: 0.9, sizeAttenuation: true, map: softSprite(),
+      transparent: true, opacity: 0.30, depthWrite: false,
+    }));
+    this.trailLife = new Float32Array(90);
+    this.trailN = 90; this.trailAt = 0;
+  }
+
+  updateChips(sim, dt) {
+    const b = sim.ball;
+    // ---- shed flakes in proportion to how fast the shell is going
+    const ca = this.chips.geometry.attributes.position.array, cv = this.chipV;
+    if (dt > 0 && sim.meltLast > 0.006 && b.shell > 0) {
+      const n = Math.min(3, Math.floor(sim.meltLast * 140 * dt * 60));
+      for (let e = 0; e < n; e++) {
+        const i = this.chipAt = (this.chipAt + 1) % this.chipN;
+        const j = i * 3;
+        const a = Math.random() * 6.283, u = Math.random() * 2 - 1, w = Math.sqrt(1 - u * u);
+        ca[j] = b.p.x + Math.cos(a) * w * b.r;
+        ca[j + 1] = b.p.y + u * b.r;
+        ca[j + 2] = b.p.z + Math.sin(a) * w * b.r;
+        cv[j] = -b.v.x * 0.1 + (Math.random() - 0.5) * 2;
+        cv[j + 1] = 0.6 + Math.random() * 1.8;
+        cv[j + 2] = -b.v.z * 0.1 + (Math.random() - 0.5) * 2;
+      }
+    }
+    for (let i = 0; i < this.chipN; i++) {
+      const j = i * 3;
+      if (ca[j + 1] < -9000) continue;
+      cv[j + 1] -= 14 * dt;
+      ca[j] += cv[j] * dt; ca[j + 1] += cv[j + 1] * dt; ca[j + 2] += cv[j + 2] * dt;
+      if (ca[j + 1] < b.p.y - 4) ca[j + 1] = -9999;
+    }
+    this.chips.geometry.attributes.position.needsUpdate = true;
+
+    // ---- vapour wake, only fast and only if wanted
+    const ta = this.trail.geometry.attributes.position.array;
+    const speed = Math.hypot(b.v.x, b.v.z);
+    this.trail.visible = !!this.settings.trail;
+    if (dt > 0 && this.settings.trail && speed > 9) {
+      const i = this.trailAt = (this.trailAt + 1) % this.trailN;
+      const j = i * 3;
+      ta[j] = b.p.x; ta[j + 1] = b.p.y; ta[j + 2] = b.p.z;
+      this.trailLife[i] = 1;
+    }
+    for (let i = 0; i < this.trailN; i++) {
+      if (this.trailLife[i] <= 0) continue;
+      this.trailLife[i] -= dt * 1.8;
+      if (this.trailLife[i] <= 0) ta[i * 3 + 1] = -9999;
+    }
+    this.trail.geometry.attributes.position.needsUpdate = true;
+  }
+
+  /** A burst of the surface where the ball landed, plus a kick in the lens. */
+  landingPuff(sim, speed) {
+    const b = sim.ball;
+    const a = this.spray.geometry.attributes.position.array, v = this.sprayV;
+    const n = Math.min(22, Math.round(speed * 3));
+    for (let e = 0; e < n; e++) {
+      const i = this.sprayAt = (this.sprayAt + 1) % this.sprayN;
+      const j = i * 3;
+      const ang = Math.random() * 6.283, rad = Math.random() * b.r;
+      a[j] = b.p.x + Math.cos(ang) * rad;
+      a[j + 1] = b.p.y - b.r * 0.85;
+      a[j + 2] = b.p.z + Math.sin(ang) * rad;
+      v[j] = Math.cos(ang) * (1.5 + speed * 0.35);
+      v[j + 1] = 1.5 + Math.random() * speed * 0.35;
+      v[j + 2] = Math.sin(ang) * (1.5 + speed * 0.35);
+    }
+    this.spray.geometry.attributes.position.needsUpdate = true;
+    this.director.kick(Math.min(1, speed * 0.09));
   }
 
   buildSnow() {
@@ -608,92 +707,7 @@ export class View {
 
     updateBall(this.B, sim, dt, this.settings);
 
-    // --- camera. World up, always. Yaw follows travel, heavily lagged.
-    this.ballGroup.getWorldPosition(this._ballWorld);
-    const vw = this._v.set(b.v.x, 0, b.v.z).applyEuler(this.stageGroup.rotation);
-    const speed = Math.hypot(vw.x, vw.z);
-    if (speed > 1.4) {
-      const want = Math.atan2(vw.x, vw.z);
-      let d = want - this.camYaw;
-      while (d > Math.PI) d -= Math.PI * 2;
-      while (d < -Math.PI) d += Math.PI * 2;
-      this.camYaw += d * Math.min(1, s.camFollow * dt * Math.min(1, speed / 7));
-    }
-
-    // FOV widening is the cheapest strong speed cue available: the world
-    // stretches past the edges of the frame as you gather pace.
-    const fovWant = 52 + Math.min(12, speed * 0.62);
-    if (Math.abs(this.camera.fov - fovWant) > 0.01) {
-      this.camera.fov += (fovWant - this.camera.fov) * Math.min(1, 2.6 * dt);
-      this.camera.updateProjectionMatrix();
-    }
-    this.speedFrac = Math.min(1, speed / T.V_MAX);
-
-    const dist = s.camDist + Math.min(6, speed * 0.32);
-    const hgt = s.camHeight + Math.min(2.6, speed * 0.1);
-    /* The camera offset rides a FRACTION of the stage's tilt.
-     *
-     * Anchored in world space (factor 0) the deck behind the ball swings up
-     * into the camera the moment you pitch forward -- dist * sin(tilt) is over
-     * 5 units at full lean, which is more than the camera's height above the
-     * floor. That is the "camera gets stuck behind the stage" report.
-     *
-     * Anchored fully in the stage frame (factor 1) the camera rotates exactly
-     * with the floor, so the tilt becomes invisible and the whole read is lost.
-     *
-     * Partway keeps the floor clear while leaving plenty of visible tilt. The
-     * camera's UP stays world-up regardless, so the horizon never rolls. */
-    const want = this._camWant || (this._camWant = new THREE.Vector3());
-    const off = this._camOff || (this._camOff = new THREE.Vector3());
-    const fr = this._camFrame || (this._camFrame = new THREE.Euler());
-    fr.set(sim.tilt.x * CAM_TILT_FOLLOW, 0, sim.tilt.z * CAM_TILT_FOLLOW);
-    off.set(-Math.sin(this.camYaw) * dist, hgt, -Math.cos(this.camYaw) * dist);
-    off.applyEuler(fr);
-    want.copy(this._ballWorld).add(off);
-    const k = Math.min(1, 6.0 * dt);
-    this.camera.position.lerp(want, k);
-
-    // --- do not let the stage get between the camera and the ball.
-    // Cast from just above the ball out to where the camera wants to sit; if
-    // anything solid is in the way, ride in front of it.
-    if (this.solids.length) {
-      const from = this._rayFrom || (this._rayFrom = new THREE.Vector3());
-      const dir = this._rayDir || (this._rayDir = new THREE.Vector3());
-      from.copy(this._ballWorld); from.y += 0.6;
-      dir.copy(this.camera.position).sub(from);
-      const want2 = dir.length();
-      if (want2 > 0.01) {
-        dir.divideScalar(want2);
-        this._ray.set(from, dir);
-        this._ray.far = want2;
-        const hits = this._ray.intersectObjects(this.solids, false);
-        if (hits.length) {
-          const d = Math.max(1.6, hits[0].distance - 0.55);
-          this.camera.position.copy(from).addScaledVector(dir, d);
-        }
-      }
-    }
-
-    this.camLook.lerp(
-      (this._lookWant || (this._lookWant = new THREE.Vector3())).set(
-        this._ballWorld.x + vw.x * 0.16,
-        this._ballWorld.y + 1.2,
-        this._ballWorld.z + vw.z * 0.16,
-      ),
-      Math.min(1, 8 * dt),
-    );
-    this.camera.up.set(0, 1, 0);
-    this.camera.lookAt(this.camLook);
-
-    // dt is 0 on paused and result screens. Without this guard the decay term
-    // pow(0.02, 0) is 1, so the shake never dies and the camera jitters behind
-    // every menu for as long as it is open.
-    if (dt > 0 && this.shake > 0.001 && s.shake) {
-      const a = this.shake;
-      this.camera.position.x += (Math.random() - 0.5) * a;
-      this.camera.position.y += (Math.random() - 0.5) * a;
-      this.shake *= Math.pow(0.02, dt);
-    } else this.shake = 0;
+    this.director.update(this, sim, dt);
 
     // The sea, ridges and haze ride with the camera horizontally so they never
     // run out; their height is fixed, so they still read as far below.
@@ -708,6 +722,7 @@ export class View {
     for (const v of this.vents) stepSteam(v, dt);
     stepFlock(this.flock, sim.time, this.camera.position.x, this.camera.position.z);
     this.updateSpray(sim, dt);
+    this.updateChips(sim, dt);
     this.updateSnow(dt);
     if (this.goalGroup) {
       this.goalGroup.rotation.y += dt * (0.35 + this.burst * 6);
@@ -762,6 +777,7 @@ export class View {
   goalBurst() { this.burst = 1; }
 
   /** Drop the camera straight onto the ball, for stage start and restarts. */
+  /** Drop the camera straight onto the ball, for stage start and restarts. */
   snapCamera(sim) {
     const b = sim.ball;
     this.stageRoot.rotation.set(sim.tilt.x, 0, sim.tilt.z);
@@ -769,17 +785,20 @@ export class View {
     this.stageInner.position.set(-b.p.x, -b.p.y, -b.p.z);
     this.ballGroup.position.set(b.p.x, b.p.y, b.p.z);
     this.ballGroup.getWorldPosition(this._ballWorld);
-    this.camYaw = 0;
-    this.camera.position.set(
-      this._ballWorld.x, this._ballWorld.y + this.settings.camHeight, this._ballWorld.z - this.settings.camDist,
-    );
-    this.camLook.copy(this._ballWorld);
-    this.camera.lookAt(this.camLook);
+    this.director.snap(this, sim);
   }
+
+  /** The camera director: `follow` in play, plus intro / arrival / fall / wake. */
+  shot(mode, dur) { this.director.set(mode, dur, this); }
+
+  get shake() { return this.director.shake; }
+  set shake(v) { this.director.shake = v; }
+  get speedFrac() { return this.director.speedFrac; }
 
   applySettings(settings) {
     const prevIce = this.settings.iceQuality;
     this.settings = settings;
+    this.director.settings = settings;
     this.renderer.toneMappingExposure = settings.exposure;
     if (settings.iceQuality !== prevIce) {
       this.stageGroup.remove(this.ballGroup);

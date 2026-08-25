@@ -124,7 +124,21 @@ only asserts that neither route is a trap. The real payoff needs a playtest.
 through Settings: tilt limit and response, steering mode, camera follow/distance/
 height, brightness, ice quality, snowfall, shadows, resolution, and volumes.
 
+## Controls and settings
+
+`WASD` / arrows tilt the stage, `R` restart, `Esc` pause; gamepad stick supported.
+Twenty-two settings across Control, Camera, Picture, Play and Sound — tilt limit and
+response, camera-relative steering, follow/distance/height, field of view, cinematic
+shots, impact shake, brightness, ice quality, snowfall, ball trail, speed rush,
+retry-on-failure, and a single **Reduce motion** switch that turns off shake, the
+speed rush and the scripted camera together.
+
 ## Credits
 
-Vanilla ES modules, three.js vendored locally in `vendor/`. All sound is synthesised
-in WebAudio at runtime — no audio assets. No build step.
+Music by **Kevin MacLeod** ([incompetech.com](https://incompetech.com)), licensed
+under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/):
+"Lightless Dawn" (title), "Ice Flow" (the cold worlds), "Frozen Star" (the
+Cathedral), "Impact Lento" (the Geothermal Field).
+
+Everything else is synthesised in WebAudio at runtime. Vanilla ES modules, three.js
+vendored locally in `vendor/`. No build step.

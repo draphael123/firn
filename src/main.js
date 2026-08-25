@@ -9,17 +9,18 @@ import * as SIM from './sim.js';
 import { STAGES, shellForOpening, GATE_OPEN, GRATE_GAP } from './stages.js';
 import { autopilot } from './autopilot.js';
 import { View } from './render.js';
-import { Audio } from './audio.js';
+import { Audio, Music, TRACK_FOR_WORLD } from './audio.js';
 import { Store, UI, fmtTime } from './ui.js';
 
 const $ = (id) => document.getElementById(id);
 const GATE_SHELL = shellForOpening(GATE_OPEN);
 const GRATE_SHELL = shellForOpening(GRATE_GAP);
 
-let store, settings, view, audio, ui;
+let store, settings, view, audio, music, ui;
 let sim = null, stageIndex = 0;
 let mode = 'attract';          // attract | ready | play | paused | over
 let readyT = 0;
+let hitstopT = 0;
 let attractPilot = null;
 let last = 0, lastRender = 0, raf = 0;
 
@@ -38,7 +39,7 @@ function readInput() {
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   for (const p of pads) {
     if (!p) continue;
-    const dz = (v) => (Math.abs(v) < 0.16 ? 0 : v);
+    const dz = (v) => (Math.abs(v) < settings.deadzone ? 0 : v);
     ix += dz(p.axes[0] || 0);
     iy -= dz(p.axes[1] || 0);
     break;
@@ -67,6 +68,7 @@ function readInput() {
 
 function startStage(i) {
   if (i < 0 || i >= STAGES.length) return quitToTitle();
+  hitstopT = 0;
   stageIndex = i;
   const stage = STAGES[i];
   sim = SIM.createSim(stage, { seed: (store.bearer * 7919 + i * 104729) >>> 0 });
@@ -79,6 +81,7 @@ function startStage(i) {
 }
 
 function restart() {
+  hitstopT = 0;
   const stage = STAGES[stageIndex];
   sim = SIM.createSim(stage, { seed: (store.bearer * 7919 + stageIndex * 104729) >>> 0 });
   view.snapCamera(sim);
@@ -90,6 +93,7 @@ function restart() {
 function quitToTitle() {
   mode = 'attract';
   audio.setBed(false);
+  music.play('title');
   startAttract();
   ui.stack.length = 0;
   ui.show('scr-title', false);
@@ -103,8 +107,14 @@ function finish() {
   if (won) isBest = store.record(stage.id, sim.time, sim.ball.shell);
   mode = 'over';
   audio.setBed(false);
-  if (won) { audio.win(); view.goalBurst(); burstFlash(); } else audio.lose(sim.reason);
+  if (won) {
+    audio.win(); view.goalBurst(); burstFlash(); view.shot('arrival');
+  } else {
+    audio.lose(sim.reason);
+    view.shot(sim.reason === 'woke' ? 'wake' : 'fall');
+  }
   ui.buildRoute();
+  if (!won && settings.autoRetry) { restart(); return; }
   ui.showResult({
     won, reason: sim.reason, stage, time: sim.time,
     shell: sim.ball.shell, index: stageIndex, isBest,
@@ -122,7 +132,8 @@ function startAttract() {
 /** The held beat: name the stage, then let go. Any key skips it. */
 function arm(stage, hold) {
   mode = 'ready';
-  readyT = hold;
+  // the establishing shot needs room to breathe; without it, don't linger
+  readyT = settings.cinematic ? hold : Math.min(hold, 0.5);
   $('rdNum').textContent = stage.numeral;
   $('rdName').textContent = stage.name;
   $('rdEpi').textContent = stage.epigraph || '';
@@ -130,11 +141,14 @@ function arm(stage, hold) {
   r.classList.remove('hide');
   r.style.animation = 'none'; void r.offsetWidth; r.style.animation = '';
   audio.setBed(true);
+  music.play(TRACK_FOR_WORLD[stage.world] || 'cold');
+  view.shot('intro', readyT);
 }
 
 function release() {
   if (mode !== 'ready') return;
   mode = 'play';
+  view.shot('follow');
   $('ready').classList.add('hide');
   audio.blip(660, 0.06, 0.14);
 }
@@ -193,7 +207,8 @@ function updateHud() {
   $('edge').classList.toggle('on', shell <= 0 || m > 0.06);
 
   $('shellBox').classList.toggle('hide', !settings.showMeter);
-  $('speed').style.opacity = Math.max(0, (view.speedFrac || 0) - 0.45) * 1.1;
+  $('speed').style.opacity = settings.speedRush ? Math.max(0, (view.speedFrac || 0) - 0.45) * 1.1 : 0;
+  $('timeVal').parentElement.style.visibility = settings.showTimer ? '' : 'hidden';
 }
 
 // ---------------------------------------------------------------- loop
@@ -209,6 +224,7 @@ function frame(now) {
 
 /** Exposed so a harness (or a throttled tab) can advance without rAF. */
 export function step(dt) {
+  music.update(dt);
   if (!sim) return;
 
   if (mode === 'ready') {
@@ -220,6 +236,13 @@ export function step(dt) {
   }
 
   if (mode === 'play') {
+    if (hitstopT > 0) {
+      // the world keeps breathing; only the simulation is held
+      hitstopT -= dt;
+      view.update(sim, dt);
+      updateHud();
+      return;
+    }
     sim.step(dt, readInput());
     drainEvents();
     audio.update(sim, dt);
@@ -241,8 +264,11 @@ function drainEvents() {
   for (const e of sim.events) {
     if (e.type === 'impact') {
       audio.impact(e.speed);
-      view.impact(e.speed);
+      view.impact(sim, e.speed);
       if (e.speed > 3) view.shake = Math.min(0.55, e.speed * 0.045);
+      // Hitstop: a couple of frames of held time on a real slam. Cheap, and it
+      // is most of why an impact reads as WEIGHT rather than as a colour change.
+      if (e.speed > 5 && !settings.reduceMotion) hitstopT = Math.min(0.085, e.speed * 0.008);
     } else if (e.type === 'bare') {
       audio.bare();
       view.shake = 0.5;
@@ -264,6 +290,7 @@ export function boot() {
 
   view = new View($('c'), settings);
   audio = new Audio(settings);
+  music = new Music(settings);
 
   ui = new UI(store, {
     onStart: (i) => startStage(i),
@@ -274,6 +301,7 @@ export function boot() {
       settings = store.settings();
       view.applySettings(settings);
       audio.applySettings(settings);
+      music.applySettings(settings);
       resize();
     },
     onNav: (k) => {
@@ -309,6 +337,7 @@ export function boot() {
 
   resize();
   startAttract();
+  music.play('title');
   ui.show('scr-title', false);
 
   last = performance.now();

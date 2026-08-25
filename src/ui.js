@@ -23,12 +23,17 @@ export const SETTINGS_SCHEMA = [
     { key: 'camRelative', label: 'Steering', values: [0, 1], names: ['Fixed', 'Camera-relative'], def: 1 },
     { key: 'invertPitch', label: 'Invert pitch', bool: true, def: 0 },
     { key: 'invertRoll',  label: 'Invert roll',  bool: true, def: 0 },
+    { key: 'deadzone',   label: 'Stick deadzone', values: [0.08, 0.16, 0.26], names: ['Small', 'Normal', 'Large'], def: 1 },
   ] },
   { group: 'Camera', items: [
     { key: 'camFollow', label: 'Follow',   values: [2.0, 3.4, 5.5], names: ['Loose', 'Normal', 'Tight'], def: 1 },
     { key: 'camDist',   label: 'Distance', values: [9.5, 12.5, 15.5], names: ['Close', 'Normal', 'Far'], def: 1 },
     { key: 'camHeight', label: 'Height',   values: [4.3, 5.6, 7.2], names: ['Low', 'Normal', 'High'], def: 1 },
-    { key: 'shake',     label: 'Impact shake', bool: true, def: 1 },
+    { key: 'shakeAmount', label: 'Impact shake', values: [0, 0.35, 0.7, 1.2], names: ['Off', 'Subtle', 'Normal', 'Heavy'], def: 2 },
+    { key: 'fov',       label: 'Field of view', values: [46, 52, 58, 64], names: ['46°', '52°', '58°', '64°'], def: 1 },
+    // Scripted shots for the beats of a run. Off keeps the follow camera at all
+    // times, which some people simply prefer and which never surprises you.
+    { key: 'cinematic', label: 'Cinematic shots', bool: true, def: 1 },
   ] },
   { group: 'Picture', items: [
     { key: 'iceQuality', label: 'Ice',        values: ['plain', 'clear'], names: ['Plain', 'Clear'], def: 1 },
@@ -39,6 +44,15 @@ export const SETTINGS_SCHEMA = [
     // brightness control it is unplayable on plenty of perfectly good screens.
     { key: 'exposure',   label: 'Brightness', values: [1.6, 1.85, 2.1, 2.4, 2.7], names: ['Dim', 'Low', 'Normal', 'Bright', 'Brightest'], def: 2 },
     { key: 'showMeter',  label: 'Shell gauge', bool: true, def: 1 },
+    { key: 'speedRush',  label: 'Speed rush',  bool: true, def: 1 },
+    { key: 'trail',      label: 'Ball trail',  bool: true, def: 1 },
+  ] },
+  { group: 'Play', items: [
+    { key: 'autoRetry',  label: 'Retry on failure', bool: true, def: 0 },
+    { key: 'showTimer',  label: 'Timer', bool: true, def: 1 },
+    // One switch for everyone who needs the picture to stop moving: kills
+    // shake, the speed rush and the scripted shots together.
+    { key: 'reduceMotion', label: 'Reduce motion', bool: true, def: 0 },
   ] },
   { group: 'Sound', items: [
     { key: 'volMaster', label: 'Master',  range: 10, def: 7 },
@@ -64,6 +78,7 @@ export function resolveSettings(idx) {
     else if (it.range !== undefined) s[it.key] = i;
     else s[it.key] = it.values[i];
   }
+  if (s.reduceMotion) { s.cinematic = false; s.speedRush = false; s.shakeAmount = 0; }
   // tilt settings live on the sim's tuning table
   T.TILT_MAX = s.tiltMax;
   T.TILT_RATE = s.tiltRate;
