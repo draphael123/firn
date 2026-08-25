@@ -92,6 +92,11 @@ check('the bells buy real distance', withBells.minGap - ignoring.minGap > 14,
   `${withBells.minGap.toFixed(0)}m clear with, ${ignoring.minGap.toFixed(0)}m without`);
 check('a clean run is never simply killed', withBells.struck === 0,
   `${withBells.struck} blows`);
+/* The strongest statement this file makes. A boss whose mechanic is optional is
+ * a boss with no mechanic -- if the same line wins whether or not you ever touch
+ * a bell, the bells are scenery and the stage is just a long road. */
+check('the bells are NOT optional', ignoring.state !== 'won',
+  `ignoring them: ${ignoring.state}${ignoring.reason ? '/' + ignoring.reason : ''} at ${ignoring.t.toFixed(0)}s`);
 check('sensible length (bot pace)', withBells.t > 25 && withBells.t < 110, `${withBells.t.toFixed(1)}s`);
 
 // the finish must be a sprint: nothing left to ring over the last stretch

@@ -56,13 +56,16 @@ export const T = {
 
   // The sleeper. Offset centre of mass, worsening as the shell thins.
   // The hunt. Only the boss stage sets stage.hunt, so these are inert elsewhere.
+  HUNT_BODY: 2.5,       // its physical radius -- it is a SOLID thing, not a trigger
+  HUNT_CHEST: 1.7,      // how far up its body the ball actually meets it
+  HUNT_SHOVE: 1.35,     // how much of its own speed it puts through you
   HUNT_REACH: 3.4,      // how close before it lands a blow, metres along the route
   HUNT_KNOCK: 15.0,     // impulse it puts through you
   HUNT_BITE: 0.06,      // shell lost per blow
   HUNT_HEAT: 0.055,     // extra melt per second when it is right behind you
   HUNT_RANGE: 26,       // over what gap that heat falls to nothing
-  HUNT_STAGGER: 2.6,    // seconds a bell buys you
-  HUNT_KNOCKBACK: 22,   // metres a bell drives it back down the road
+  HUNT_STAGGER: 3.6,    // seconds a bell buys you
+  HUNT_KNOCKBACK: 38,   // metres a bell drives it back down the road
 
   WOBBLE_A: 5.4,        // peak lateral accel, m/s^2, at shell 0
   WOBBLE_P: 1.7,        // exponent -- late and sudden, not linear
@@ -239,13 +242,29 @@ function measureRoute(wps) {
     return best;
   };
 
-  /** The point at arc length s. */
+  /**
+   * The point at arc length s -- EXTRAPOLATED past either end, not clamped.
+   *
+   * Clamping looks harmless and is not: the hunter starts at a negative arc
+   * length, behind the start line, so a clamp put it exactly ON the start line
+   * -- which is where the ball is standing. Once the hunter became a solid
+   * body that meant it was inside the player at spawn, landing blows while the
+   * gap readout still said forty metres.
+   */
   const at = (s, out) => {
-    const q = s < 0 ? 0 : s > total ? total : s;
-    let i = 0;
-    while (i < cum.length - 2 && cum[i + 1] < q) i++;
-    const seg = cum[i + 1] - cum[i] || 1;
-    const t = (q - cum[i]) / seg;
+    let i, t;
+    if (s < 0) {
+      i = 0; t = s / (cum[1] || 1);                    // back down the first leg
+    } else if (s > total) {
+      i = wps.length - 2;
+      const seg = cum[i + 1] - cum[i] || 1;
+      t = 1 + (s - total) / seg;                       // on past the last
+    } else {
+      i = 0;
+      while (i < cum.length - 2 && cum[i + 1] < s) i++;
+      const seg = cum[i + 1] - cum[i] || 1;
+      t = (s - cum[i]) / seg;
+    }
     const a = wps[i], b = wps[i + 1];
     out.x = a[0] + (b[0] - a[0]) * t;
     out.y = a[1] + (b[1] - a[1]) * t;
@@ -449,6 +468,12 @@ export function createSim(stageDef, opts = {}) {
       for (const e of h.escalate) if (you >= e.at) H.speed = Math.max(H.speed, e.speed);
     }
 
+    /* It hunts you; it does not race you to the top. Without this it simply
+     * overtakes when it is faster and carries on up the mountain alone, which
+     * is both absurd to watch and removes the pressure entirely. It closes to
+     * your shoulder and stays there. */
+    if (H.s > you + 1.5) H.s = you + 1.5;
+
     H.gap = you - H.s;
     route.at(H.s, H.p);
 
@@ -473,26 +498,56 @@ export function createSim(stageDef, opts = {}) {
       }
     }
 
-    // ---- a blow. It knocks you off your line hard enough to put you over a
-    // kerb, which is the threat: it does not kill you, the drop does.
-    if (H.stagger <= 0 && H.gap < T.HUNT_REACH && b.shell >= 0) {
-      const away = Math.hypot(b.v.x, b.v.z) > 0.1
-        ? Math.atan2(b.v.x, b.v.z)
-        : 0;
-      const side = (H.caught % 2 ? 1 : -1);
-      b.v.x += Math.sin(away + side * 1.15) * T.HUNT_KNOCK;
-      b.v.z += Math.cos(away + side * 1.15) * T.HUNT_KNOCK;
-      b.v.y += 4.5;
-      b.shell = clamp01(b.shell - T.HUNT_BITE);
-      b.startle = 5.5;
-      H.caught++;
-      H.s -= 7;                      // it recoils a little, so it is not a lock
-      sim.events.push({ type: 'struck', speed: T.HUNT_KNOCK });
+    /* ---- IT IS SOLID.
+     *
+     * This used to be a trigger: a distance test along the road that applied a
+     * scripted shove. That reads as being teleported sideways by nothing, and
+     * worse, you could drive straight through the thing chasing you. It is a
+     * moving sphere now -- the ball is pushed out of it, takes its momentum,
+     * and cannot pass it. Everything the chase threatens you with comes from
+     * that one fact: it is a wall that is catching up.
+     */
+    const cx = H.p.x, cy = H.p.y + T.HUNT_CHEST, cz = H.p.z;
+    let dx = b.p.x - cx, dy = b.p.y - cy, dz = b.p.z - cz;
+    let d = Math.hypot(dx, dy, dz);
+    const R = T.HUNT_BODY + b.r;
+    if (d < R) {
+      if (d < 1e-4) { dx = 0; dy = 1; dz = 0; d = 1; }      // dead centre: pick a way out
+      const nx = dx / d, ny = dy / d, nz = dz / d;
+
+      // push clear
+      const pen = R - d;
+      b.p.x += nx * pen; b.p.y += ny * pen; b.p.z += nz * pen;
+
+      // its own heading, so a hit from behind throws you FORWARD and off line
+      route.at(H.s + 1, _hv);
+      const hx = _hv.x - H.p.x, hz = _hv.z - H.p.z;
+      const hl = Math.hypot(hx, hz) || 1;
+
+      const vn = b.v.x * nx + b.v.y * ny + b.v.z * nz;
+      if (vn < 0) {                                        // moving into it
+        b.v.x -= vn * nx * 1.5; b.v.y -= vn * ny * 1.5; b.v.z -= vn * nz * 1.5;
+      }
+      const push = (H.stagger > 0 ? 0.25 : 1) * H.speed * T.HUNT_SHOVE;
+      b.v.x += (hx / hl) * push * 0.55 + nx * push * 0.75;
+      b.v.z += (hz / hl) * push * 0.55 + nz * push * 0.75;
+      b.v.y += 3.0;
+
+      // and it costs you shell, but only once per contact
+      if (H.stagger <= 0 && sim.time - (H.lastHit || -9) > 0.6) {
+        H.lastHit = sim.time;
+        b.shell = clamp01(b.shell - T.HUNT_BITE);
+        b.startle = 5.5;
+        H.caught++;
+        H.s -= 5;                    // it checks its stride, so it is not a lock
+        sim.events.push({ type: 'struck', speed: T.HUNT_KNOCK });
+      }
     }
   }
 
   // Scratch vectors -- resolve() runs 240x/s, so it allocates nothing.
   const _l = [0, 0, 0], _n = [0, 0, 0];
+  const _hv = { x: 0, y: 0, z: 0 };
 
   /**
    * Sphere vs one box, in the box's own frame. Returns penetration depth and

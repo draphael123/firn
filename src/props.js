@@ -410,7 +410,11 @@ export function buildStageProps(stage, weather) {
    * instead of overlapping, so there is nothing for them to fight with.
    */
   const trackMat = new THREE.MeshStandardMaterial({
-    color: icy ? 0x8a99a3 : 0x8d9298, roughness: 0.34, metalness: 0.10,
+    /* Roughness 0.34 with metalness gave it a specular hot spot that blew to
+     * pure white wherever the key light caught it, which is why the racing line
+     * looked like a strip lamp rather than like polished stone. It only has to
+     * be SMOOTHER than the flagstone around it (0.86), not mirror-bright. */
+    color: icy ? 0x8a99a3 : 0x8d9298, roughness: 0.58, metalness: 0.03,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
   });
   const track = bank(BOX, trackMat, 900);

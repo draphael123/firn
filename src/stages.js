@@ -202,9 +202,19 @@ function arc(cx, cz, radius, a0, a1, width, top, opts = {}) {
     if (opts.rails !== false) {
       for (const sgn of sides) {
         const rr = radius + sgn * (width / 2 + 0.35);
+        /* A rail is sized from ITS OWN radius, not from the deck's.
+         *
+         * segLen is deliberately generous -- it comes from the outer edge and
+         * is inflated 18% so the road has no seam to catch on. Reusing it for
+         * the rails made every one of them far too long: an inner rail sits at
+         * radius 3.65 on a 10m bend but was given a box cut for radius 16, so
+         * consecutive rails overlapped by five times their own length and
+         * their corners fanned out into a sawtooth. Every bend in the game had
+         * a serrated comb for a parapet. */
+        const railLen = Math.abs(sweep) / n * rr * 1.06;
         out.push({
           p: [cx + Math.cos(tm) * rr, top + RAIL_H / 2 - SINK, cz + Math.sin(tm) * rr],
-          s: [0.9, RAIL_H + SINK * 2, segLen], kind: 'rail', rot: [0, -tm, 0],
+          s: [0.9, RAIL_H + SINK * 2, railLen], kind: 'rail', rot: [0, -tm, 0],
         });
       }
     }
@@ -811,12 +821,20 @@ const s9 = {
     head: -40,
     wakeAt: 18,
     /* Calibrated against the pilot's measured pace on this road (11.5 m/s
-     * average over 339m), not picked for feel. At 6.4 it never came within 40m
-     * and was scenery; at 13.2 a clean run that skipped the bells was killed
-     * outright. Here a bell line finishes 38m clear and a run that ignores them
-     * finishes 10m clear -- skipping is possible, and it is frightening. */
-    speed: 12.8,
-    escalate: [{ at: 130, speed: 14.2 }, { at: 250, speed: 15.6 }],
+     * average over 339m), not picked for feel.
+     *
+     * It is FASTER than you. That is the point, and it is only survivable
+     * because the bells are strong: 38m of knockback and 3.6s of stagger apiece,
+     * which is roughly 100m of road bought for a 12m detour. Ring all three and
+     * a clean line finishes 26m clear; ignore them and the same clean line is
+     * caught and killed at 23 seconds. A slower run that uses them still gets
+     * home with it on their shoulder.
+     *
+     * Earlier passes had it at 6.4 (never within 40m -- scenery) and 12.8
+     * (skipping the bells was merely frightening). Making the BELLS stronger
+     * rather than the beast slower is what let it be genuinely fast. */
+    speed: 16.5,
+    escalate: [{ at: 130, speed: 18.0 }, { at: 250, speed: 19.5 }],
     bells: [[8.5, 4.0, 67.5, 3.2], [-28.5, 7.0, 130.5, 3.2], [24.5, 11.0, 224.5, 3.2]],
   },
 
