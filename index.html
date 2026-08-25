@@ -85,6 +85,26 @@
   #scr-title .eyebrow,
   #scr-title .menu li,
   #scr-title .hint { text-shadow: 0 2px 16px rgba(3,8,12,.95), 0 0 4px rgba(3,8,12,.85); }
+  /* Names the world the attract reel is currently showing. Sits opposite the
+     wordmark so it never fights it, and fades rather than cutting. */
+  #reelTag {
+    position: fixed; right: var(--pad); bottom: 24px; z-index: 21;
+    text-align: right; opacity: 0; transition: opacity .7s ease;
+    text-shadow: 0 2px 16px rgba(3,8,12,.95);
+    pointer-events: none;
+  }
+  #reelTag.on { opacity: .92; }
+  #reelTag b {
+    font-family: var(--serif); font-weight: 400; font-size: 26px;
+    color: var(--ember); margin-right: 10px; vertical-align: baseline;
+  }
+  #reelTag i {
+    display: block; font-style: normal; margin-top: 4px;
+    font-size: 10px; letter-spacing: .24em; text-transform: uppercase;
+    color: var(--ice); opacity: .7; font-variant-numeric: tabular-nums;
+  }
+  #reelTag { font-size: 13px; letter-spacing: .18em; text-transform: uppercase; color: var(--bone); }
+
   .foot { text-shadow: 0 2px 14px rgba(3,8,12,.9); }
   @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   /* Auto margins centre the column when it fits and let it scroll when it does
@@ -322,6 +342,26 @@
   #bearerLine { margin-top: 20px; font-size: 12px; letter-spacing: .1em; color: var(--dim); }
   #bearerLine b { color: var(--bone); font-weight: 500; letter-spacing: .16em; }
 
+  /* Names the world the attract reel is currently showing. Sits opposite the
+     wordmark so it never fights it, and fades rather than cutting. */
+  #reelTag {
+    position: fixed; right: var(--pad); bottom: 24px; z-index: 21;
+    text-align: right; opacity: 0; transition: opacity .7s ease;
+    text-shadow: 0 2px 16px rgba(3,8,12,.95);
+    pointer-events: none;
+  }
+  #reelTag.on { opacity: .92; }
+  #reelTag b {
+    font-family: var(--serif); font-weight: 400; font-size: 26px;
+    color: var(--ember); margin-right: 10px; vertical-align: baseline;
+  }
+  #reelTag i {
+    display: block; font-style: normal; margin-top: 4px;
+    font-size: 10px; letter-spacing: .24em; text-transform: uppercase;
+    color: var(--ice); opacity: .7; font-variant-numeric: tabular-nums;
+  }
+  #reelTag { font-size: 13px; letter-spacing: .18em; text-transform: uppercase; color: var(--bone); }
+
   .foot {
     position: fixed; left: var(--pad); bottom: 22px; z-index: 21;
     font-size: 10px; letter-spacing: .2em; text-transform: uppercase;
@@ -401,6 +441,7 @@
   </div>
 </div>
 <div class="foot" id="foot"></div>
+<div id="reelTag"></div>
 
 <!-- ---------------------------------------------------------------- route -->
 <div class="screen hide" id="scr-route">

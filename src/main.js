@@ -95,10 +95,11 @@ function restart() {
 
 function quitToTitle() {
   mode = 'attract';
+  $('reelTag').classList.remove('on');
   audio.setBed(false);
   audio.hush();
-  startAttract();
   ui.stack.length = 0;
+  startAttract(0);
   ui.show('scr-title', false);
   ui.buildRoute();
 }
@@ -125,17 +126,51 @@ function finish() {
   });
 }
 
-/* The title screen is its own place: the shrine on the summit, which is what
- * the whole climb is FOR. The ice circles the rim under a slow lazy input --
- * a menu laid over a level playing itself never looks like a title screen, it
- * looks like a level playing itself. */
-function startAttract() {
-  sim = SIM.createSim(TITLE_SCENE, { seed: 4242 });
-  attractPilot = null;
-  view.loadStage(sim.stage);
-  view.snapCamera(sim);
-  view.shot('title');
+/* THE ATTRACT REEL.
+ *
+ * The title does not sit on one picture. It cycles: the shrine you are climbing
+ * toward, then the road itself being run, then back -- so the menu is laid over
+ * a demonstration of the game rather than a still life, and the worlds get to
+ * introduce themselves before anyone has pressed anything.
+ *
+ * Segments are chosen for CONTRAST rather than order: open ice, then the
+ * enclosed vault, then the warm low country. Any key drops out of it.
+ */
+const REEL = [
+  { kind: 'shrine', dur: 11 },
+  { kind: 'run', stage: 5, dur: 13 },   // Icefall -- open, blue, the big curve
+  { kind: 'shrine', dur: 8 },
+  { kind: 'run', stage: 2, dur: 13 },   // Cathedral -- enclosed, the hard cut
+  { kind: 'run', stage: 1, dur: 12 },   // Kiln Road -- warm, low, steaming
+];
+
+let reelIx = 0, reelT = 0;
+
+function startAttract(index = 0) {
+  reelIx = ((index % REEL.length) + REEL.length) % REEL.length;
+  const seg = REEL[reelIx];
+  reelT = seg.dur;
+  const tag = $('reelTag');
+
+  if (seg.kind === 'shrine') {
+    sim = SIM.createSim(TITLE_SCENE, { seed: 4242 });
+    attractPilot = null;
+    view.loadStage(sim.stage);
+    view.snapCamera(sim);
+    view.shot('title');
+    tag.classList.remove('on');
+  } else {
+    const st = STAGES[seg.stage];
+    sim = SIM.createSim(st, { seed: 909 + seg.stage });
+    attractPilot = autopilot(st.waypoints, { cruise: 13, meltAt: st.meltAt });
+    view.loadStage(sim.stage);
+    view.snapCamera(sim);
+    view.shot('follow');
+    tag.innerHTML = `<b>${st.numeral}</b> ${st.name}<i>${st.altitude.toLocaleString()} m</i>`;
+    tag.classList.add('on');
+  }
   music.play('title');
+  flash();
 }
 
 /**
@@ -302,10 +337,12 @@ export function step(dt) {
     updateHud();
     if (sim.state !== 'run') finish();
   } else if (mode === 'attract') {
-    sim.step(dt, attractInput(sim));
+    reelT -= dt;
+    sim.step(dt, attractPilot ? attractPilot(sim) : attractInput(sim));
     sim.events.length = 0;
     view.update(sim, dt);
-    if (sim.state !== 'run') sim.reset();
+    // a segment that ends early -- a demo run reaching its goal -- just cuts on
+    if (reelT <= 0 || sim.state !== 'run') startAttract(reelIx + 1);
   } else {
     // paused / menus: keep the world alive but frozen
     view.update(sim, 0);
@@ -388,7 +425,7 @@ export function boot() {
   window.addEventListener('resize', resize);
 
   resize();
-  startAttract();
+  startAttract(0);
   ui.show('scr-title', false);
 
   last = performance.now();
