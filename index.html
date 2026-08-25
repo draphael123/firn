@@ -355,6 +355,33 @@
   }
   #shellWrap.bare ~ #shellFoot #meltEta { color: var(--ember); }
 
+  /* The chase readout. Only the boss stage shows it, and it is the one HUD
+   * element that is meant to be read in peripheral vision: the bar fills as it
+   * closes and the whole thing goes ember at the point where it can reach you,
+   * because looking behind is exactly what you cannot afford to do. */
+  #hunt {
+    position: absolute; top: calc(84px + var(--safe-t)); right: calc(var(--pad) + var(--safe-r));
+    width: min(190px, 34vw); text-align: right;
+  }
+  #hunt.hide { display: none; }
+  #huntWrap {
+    margin-top: 7px; height: 9px; position: relative;
+    background: rgba(168,200,212,.13);
+  }
+  #huntFill {
+    position: absolute; inset: 0 0 0 auto; width: 0;
+    background: var(--ice); transition: width .12s linear;
+  }
+  #hunt.near #huntFill { background: var(--gold); }
+  #hunt.reach #huntFill { background: var(--ember); }
+  #huntTxt {
+    display: block; margin-top: 5px;
+    font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: var(--dim);
+  }
+  #hunt.near #huntTxt { color: var(--gold); }
+  #hunt.reach #huntTxt { color: var(--ember); }
+  body.touch #hunt { top: calc(84px + var(--safe-t)); right: calc(var(--pad) + var(--safe-r) + 52px); }
+
   #warn {
     position: absolute; left: 50%; top: 15%; transform: translateX(-50%);
     font-size: 12px; letter-spacing: .3em; text-transform: uppercase;
@@ -536,6 +563,11 @@
       <span id="meltRate">holding</span>
       <span id="meltEta"></span>
     </div>
+  </div>
+  <div id="hunt" class="hide">
+    <span class="hlbl">Behind you</span>
+    <div id="huntWrap"><div id="huntFill"></div></div>
+    <span id="huntTxt">distant</span>
   </div>
   <div id="warn"></div>
   <div id="teach"></div>

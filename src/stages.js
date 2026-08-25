@@ -762,6 +762,124 @@ const s6 = {
  *
  * Never entered from the route, so it is deliberately not in STAGES.
  */
+
+/* ============================================================== X. THE WARDEN
+ *
+ * The boss, and the only stage with something on it that moves.
+ *
+ * FIRN has no attack button and should not get one -- the whole vocabulary is a
+ * floor you tilt. So the Warden is not fought, it is OUTRUN, and the only way
+ * to push back is to drive the ball into a bell-pull hard enough to sound it.
+ * That is an attack made entirely out of steering, which is the one verb the
+ * player already has.
+ *
+ * It also closes the game's central vice. Every other stage punishes speed --
+ * friction melts the shell -- and nothing has ever punished slowness, so the
+ * optimal play has always been "go as slowly as you can stand". Here being slow
+ * is what kills you, and the two pressures finally argue with each other.
+ *
+ * Three bells, three escalations. Each bell knocks it 22m back down the road and
+ * buys 2.6 seconds -- and each one sits OFF the racing line, so ringing it costs
+ * you the line you were carrying. Past the last bell there is nothing left to
+ * ring and 90m of open road to the cradle.
+ */
+const s9 = {
+  id: 'warden',
+  par: { time: 62, shell: 0.34 },
+  name: 'The Warden',
+  numeral: 'X',
+  world: 'neve',
+  altitude: 1180,
+  boss: true,
+  epigraph: 'Something has kept this road since before the first bearer. It has never let one pass.',
+  warmth: 0.0092, warmFall: 30,
+  killY: -30,
+  spawn: [0, 1.4, -12],
+  goal: [0, 19.2, 314],
+  goalR: 2.9,
+  waypoints: [[0, 0, 6], [0, 0, 34], [0, 3, 58], [0, 3, 78],
+              [-10, 3, 88], [-20, 3, 98], [-20, 6, 122], [-20, 6, 140],
+              [-10, 6, 150], [0, 6, 160], [0, 10, 184], [0, 10, 200],
+              [8, 10, 208], [16, 10, 216], [16, 10, 234], [16, 14, 258],
+              [8, 14, 266], [0, 14, 274], [0, 18, 300], [0, 18, 314]],
+
+  /* head: where it starts, behind you. wakeAt: it does not move until you are
+   * properly on the road, so the opening is a breath rather than a scramble.
+   * `escalate` is keyed to how far YOU have come along the road, not to a
+   * clock, so being slow does not also make the stage longer. */
+  hunt: {
+    head: -40,
+    wakeAt: 18,
+    /* Calibrated against the pilot's measured pace on this road (11.5 m/s
+     * average over 339m), not picked for feel. At 6.4 it never came within 40m
+     * and was scenery; at 13.2 a clean run that skipped the bells was killed
+     * outright. Here a bell line finishes 38m clear and a run that ignores them
+     * finishes 10m clear -- skipping is possible, and it is frightening. */
+    speed: 12.8,
+    escalate: [{ at: 130, speed: 14.2 }, { at: 250, speed: 15.6 }],
+    bells: [[8.5, 4.0, 67.5, 3.2], [-28.5, 7.0, 130.5, 3.2], [24.5, 11.0, 224.5, 3.2]],
+  },
+
+  teach: [
+    { z: 10,  text: 'Something is on the road behind you. It does not tire, and it does not stop.' },
+    { z: 52,  text: 'A bell-pull, off to the right. Drive into it — the sound puts it back down the mountain.' },
+    { z: 118, text: 'It has found its pace. The second pull is out on the left.' },
+    { z: 210, text: 'Last one. After this there is nothing to ring.' },
+    { z: 270, text: 'Only the road now. Do not stop.' },
+    { z: 305, text: 'The cradle. Set it down.' },
+  ],
+
+  boxes: [
+    /* Straights, ramps and chicanes only -- no bare arcs. A chicane enters and
+     * leaves heading +Z, so it cannot be joined to the next piece the wrong way
+     * round; the first draft of this stage turned 90 degrees into a straight
+     * that ran the other way, and put a bend's inner kerb across the road. */
+
+    // ---- the approach
+    plate(-6, 6, -16, 34, 0),
+    railZ(-6.35, -16, 34, 0, 2.0), railZ(6.35, -16, 34, 0, 2.0), railX(-16.35, -6, 6, 0, 2.0),
+
+    // ---- first rise, and the first bell on a spur to the right
+    ...ramp(-6, 6, 34, 58, 0, 3),
+    plate(-6, 6, 58, 78, 3),
+    railZ(-6.35, 58, 78, 3),
+    plate(6, 11, 63, 72, 3),
+    railX(62.65, 6, 11, 3), railX(72.35, 6, 11, 3), railZ(11.35, 63, 72, 3),
+
+    // ---- swing left, climb, second bell out on the left
+    ...chicane(0, 78, 10, 12, 3, -1),
+    ...ramp(-26, -14, 98, 122, 3, 6),
+    plate(-26, -14, 122, 140, 6),
+    railZ(-13.65, 122, 140, 6),
+    ...rubble(-24.4, 132, 6, { seed: 41, count: 3, spread: 2.4 }),
+    plate(-31, -26, 126, 135, 6),
+    railX(125.65, -31, -26, 6), railX(135.35, -31, -26, 6), railZ(-31.35, 126, 135, 6),
+
+    // ---- back to the centre and up
+    ...chicane(-20, 140, 10, 12, 6, 1),
+    ...ramp(-6, 6, 160, 184, 6, 10),
+    plate(-6, 6, 184, 200, 10),
+    railZ(-6.35, 160, 200, 10), railZ(6.35, 160, 200, 10),
+
+    // ---- out to the right, and the last bell
+    ...chicane(0, 200, 8, 12, 10, 1),
+    plate(10, 22, 216, 234, 10),
+    railZ(9.65, 216, 234, 10),
+    plate(22, 27, 220, 229, 10),
+    railX(219.65, 22, 27, 10), railX(229.35, 22, 27, 10), railZ(27.35, 220, 229, 10),
+    ...kicker(10, 22, 236, 241, 10, 1.4),
+
+    // ---- the last climb. Nothing left to ring.
+    ...ramp(10, 22, 234, 258, 10, 14),
+    ...chicane(16, 258, 8, 12, 14, -1),
+    ...ramp(-6, 6, 274, 300, 14, 18),
+    ...rubble(4.4, 288, 16.6, { seed: 57, count: 2, spread: 1.8 }),
+    plate(-9, 9, 300, 322, 18),
+    railZ(-9.35, 300, 322, 18), railZ(9.35, 300, 322, 18), railX(322.35, -9, 9, 18, 2.4),
+  ].flat(),
+  heat: [heat(0, 3, 68, 7, 0.045), heat(16, 10, 225, 7, 0.045)],
+};
+
 export const TITLE_SCENE = {
   id: 'shrine',
   name: 'The Shrine',
@@ -785,5 +903,5 @@ export const TITLE_SCENE = {
   heat: [],
 };
 
-export const STAGES = [s0, s1, s2, s3, s4, s5, s6];
+export const STAGES = [s0, s1, s2, s3, s4, s5, s6, s9];
 export const stageById = (id) => STAGES.find((s) => s.id === id) || STAGES[0];

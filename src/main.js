@@ -353,6 +353,27 @@ function updateHud() {
   wrap.classList.toggle('thin', shell <= GATE_SHELL && shell > GRATE_SHELL);
   wrap.classList.toggle('bare', shell <= GRATE_SHELL);
 
+  /* The chase. HUNT_RANGE is where its heat starts to reach you, so that is the
+   * honest place to start filling the bar -- the number on screen and the number
+   * in the melt are the same number. */
+  const hunt = $('hunt');
+  if (sim.hunt) {
+    hunt.classList.remove('hide');
+    const RANGE = 46;
+    const gap = Math.max(0, sim.hunt.gap);
+    const close = Math.max(0, 1 - gap / RANGE);
+    $('huntFill').style.width = `${(close * 100).toFixed(0)}%`;
+    hunt.classList.toggle('near', gap < 22);
+    hunt.classList.toggle('reach', gap < 9);
+    $('huntTxt').textContent = sim.hunt.stagger > 0 ? 'reeling'
+      : gap < 9 ? 'on you'
+      : gap < 22 ? `${gap.toFixed(0)}m behind`
+      : gap < RANGE ? 'closing'
+      : 'distant';
+  } else {
+    hunt.classList.add('hide');
+  }
+
   const m = sim.meltLast;
   $('meltRate').textContent = m < 0.004 ? 'holding' : m < 0.02 ? 'melting' : m < 0.06 ? 'melting fast' : 'thawing';
 
@@ -466,6 +487,14 @@ function drainEvents() {
     } else if (e.type === 'bare') {
       audio.bare();
       view.shake = 0.5;
+    } else if (e.type === 'bell') {
+      audio.bell();
+      view.shake = Math.max(view.shake, 0.18);
+    } else if (e.type === 'struck') {
+      audio.struck();
+      view.impact(sim, 7);
+      view.shake = 0.75;
+      if (!settings.reduceMotion) hitstopT = 0.09;
     }
   }
   sim.events.length = 0;

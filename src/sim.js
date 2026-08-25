@@ -55,6 +55,15 @@ export const T = {
   HEAT_FALLOFF: 1.6,        // exponent on heat-source radial falloff
 
   // The sleeper. Offset centre of mass, worsening as the shell thins.
+  // The hunt. Only the boss stage sets stage.hunt, so these are inert elsewhere.
+  HUNT_REACH: 3.4,      // how close before it lands a blow, metres along the route
+  HUNT_KNOCK: 15.0,     // impulse it puts through you
+  HUNT_BITE: 0.06,      // shell lost per blow
+  HUNT_HEAT: 0.055,     // extra melt per second when it is right behind you
+  HUNT_RANGE: 26,       // over what gap that heat falls to nothing
+  HUNT_STAGGER: 2.6,    // seconds a bell buys you
+  HUNT_KNOCKBACK: 22,   // metres a bell drives it back down the road
+
   WOBBLE_A: 5.4,        // peak lateral accel, m/s^2, at shell 0
   WOBBLE_P: 1.7,        // exponent -- late and sudden, not linear
   STARTLE: 2.2,         // extra wobble injected per hard impact, decays
@@ -196,8 +205,59 @@ export function ambientAt(stage, x, y, z) {
 
 // ---------------------------------------------------------------- sim
 
+/**
+ * The route as a measured line, so "how far behind me is it" is a real number.
+ *
+ * A chase needs one shared coordinate for both the hunted and the hunter, and
+ * straight-line distance is the wrong one: on a switchback the beast would be
+ * ten metres away through solid rock while a hundred metres of road separated
+ * you. Everything about the hunt -- its heat, its reach, where it is drawn --
+ * runs off arc length ALONG the road instead.
+ */
+function measureRoute(wps) {
+  const cum = [0];
+  for (let i = 0; i < wps.length - 1; i++) {
+    const a = wps[i], b = wps[i + 1];
+    cum.push(cum[i] + Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]));
+  }
+  const total = cum[cum.length - 1];
+
+  /** Arc length of the closest point on the line to (x,y,z). */
+  const project = (x, y, z) => {
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i < wps.length - 1; i++) {
+      const a = wps[i], b = wps[i + 1];
+      const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
+      const L2 = dx * dx + dy * dy + dz * dz;
+      if (L2 < 1e-9) continue;
+      let t = ((x - a[0]) * dx + (y - a[1]) * dy + (z - a[2]) * dz) / L2;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const px = a[0] + dx * t, py = a[1] + dy * t, pz = a[2] + dz * t;
+      const d = (x - px) ** 2 + (y - py) ** 2 + (z - pz) ** 2;
+      if (d < bestD) { bestD = d; best = cum[i] + Math.sqrt(L2) * t; }
+    }
+    return best;
+  };
+
+  /** The point at arc length s. */
+  const at = (s, out) => {
+    const q = s < 0 ? 0 : s > total ? total : s;
+    let i = 0;
+    while (i < cum.length - 2 && cum[i + 1] < q) i++;
+    const seg = cum[i + 1] - cum[i] || 1;
+    const t = (q - cum[i]) / seg;
+    const a = wps[i], b = wps[i + 1];
+    out.x = a[0] + (b[0] - a[0]) * t;
+    out.y = a[1] + (b[1] - a[1]) * t;
+    out.z = a[2] + (b[2] - a[2]) * t;
+    return out;
+  };
+  return { total, project, at };
+}
+
 export function createSim(stageDef, opts = {}) {
   const stage = prepareStage(stageDef);
+  const route = stage.hunt ? measureRoute(stage.waypoints) : null;
   const seed = opts.seed === undefined ? 1 : opts.seed;
   const rnd = mulberry32(seed);
 
@@ -224,6 +284,18 @@ export function createSim(stageDef, opts = {}) {
     },
     meltLast: 0,
     ambientLast: 0,
+    /* The hunt. Null on every stage but the boss, and every line that touches
+     * it is guarded, so the other seven stages simulate exactly as before. */
+    hunt: stage.hunt ? {
+      s: stage.hunt.head ?? -30,   // where it is, along the road
+      speed: stage.hunt.speed,
+      stagger: 0,
+      rung: [],                    // which bells have been pulled
+      gap: 999,                    // metres of road between it and you
+      heat: 0,
+      p: { x: 0, y: 0, z: 0 },
+      caught: 0,                   // blows landed
+    } : null,
     gateBlock: 0,   // opening height of a gate refusing us this frame, else 0
     events: [],
     step,
@@ -239,6 +311,12 @@ export function createSim(stageDef, opts = {}) {
     b.shell = 1; b.r = T.R_MAX; b.grounded = false;
     b.n = { x: 0, y: 1, z: 0 }; b.spin = { x: 0, y: 0, z: 0 };
     b.startle = 0; b.lastImpact = 0;
+    if (sim.hunt) {
+      sim.hunt.s = stage.hunt.head ?? -30;
+      sim.hunt.speed = stage.hunt.speed;
+      sim.hunt.stagger = 0; sim.hunt.rung = []; sim.hunt.gap = 999;
+      sim.hunt.heat = 0; sim.hunt.caught = 0;
+    }
     sim.events.length = 0;
     return sim;
   }
@@ -304,8 +382,13 @@ export function createSim(stageDef, opts = {}) {
     const sp = Math.hypot(b.v.x, b.v.y, b.v.z);
     if (sp > T.V_MAX) { const s = T.V_MAX / sp; b.v.x *= s; b.v.y *= s; b.v.z *= s; }
 
+    stepHunt(dt);
+
     // --- melt.  MELT INVARIANT: no shell term on the right-hand side.
-    const amb = ambientAt(stage, b.p.x, b.p.y, b.p.z);
+    //     The hunt's heat is an AMBIENT term -- it depends on where you are
+    //     relative to the beast, never on how thick your shell is.
+    const amb = ambientAt(stage, b.p.x, b.p.y, b.p.z)
+      + (sim.hunt ? sim.hunt.heat : 0);
     const nrm = b.n;
     const vn = b.v.x * nrm.x + b.v.y * nrm.y + b.v.z * nrm.z;
     const contact = b.grounded
@@ -332,6 +415,80 @@ export function createSim(stageDef, opts = {}) {
 
     const gx = b.p.x - stage.goal[0], gy = b.p.y - stage.goal[1], gz = b.p.z - stage.goal[2];
     if (Math.hypot(gx, gy, gz) < stage.goalR + b.r) sim.state = 'won';
+  }
+
+  /**
+   * The beast on the road behind you.
+   *
+   * It has one job: make standing still cost something. Everything else in this
+   * game punishes speed -- friction melts the shell -- so a stage that also
+   * punishes slowness is the only place where the two pressures meet and pace
+   * becomes a real decision rather than "go as slow as you can bear".
+   *
+   * It does NOT chase in a straight line. It walks the road, measured in arc
+   * length, so a switchback keeps it honestly behind you instead of letting it
+   * cut the corner through the mountain.
+   */
+  function stepHunt(dt) {
+    const H = sim.hunt;
+    if (!H) return;
+    const b = sim.ball;
+    const h = stage.hunt;
+
+    const you = route.project(b.p.x, b.p.y, b.p.z);
+
+    // it only wakes once you are properly on the road
+    if (!h.wakeAt || you >= h.wakeAt) {
+      if (H.stagger > 0) H.stagger = Math.max(0, H.stagger - dt);
+      else H.s += H.speed * dt;
+    }
+
+    // three escalations, keyed to how far YOU have come rather than to a clock,
+    // so being slow does not also make the stage longer
+    if (h.escalate) {
+      for (const e of h.escalate) if (you >= e.at) H.speed = Math.max(H.speed, e.speed);
+    }
+
+    H.gap = you - H.s;
+    route.at(H.s, H.p);
+
+    // its heat is felt down the road, and only from behind
+    H.heat = H.gap > 0 && H.gap < T.HUNT_RANGE
+      ? T.HUNT_HEAT * (1 - H.gap / T.HUNT_RANGE)
+      : (H.gap <= 0 ? T.HUNT_HEAT : 0);
+
+    // ---- bells. Rolling into a pull rings it, and the sound puts it down the
+    // road: this is the only way you have of pushing back, and it costs you the
+    // line you were on.
+    if (h.bells) {
+      for (let i = 0; i < h.bells.length; i++) {
+        if (H.rung[i]) continue;
+        const bell = h.bells[i];
+        const dx = b.p.x - bell[0], dy = b.p.y - bell[1], dz = b.p.z - bell[2];
+        if (dx * dx + dy * dy + dz * dz > (bell[3] + b.r) ** 2) continue;
+        H.rung[i] = true;
+        H.stagger = T.HUNT_STAGGER;
+        H.s -= T.HUNT_KNOCKBACK;
+        sim.events.push({ type: 'bell', index: i, p: [bell[0], bell[1], bell[2]] });
+      }
+    }
+
+    // ---- a blow. It knocks you off your line hard enough to put you over a
+    // kerb, which is the threat: it does not kill you, the drop does.
+    if (H.stagger <= 0 && H.gap < T.HUNT_REACH && b.shell >= 0) {
+      const away = Math.hypot(b.v.x, b.v.z) > 0.1
+        ? Math.atan2(b.v.x, b.v.z)
+        : 0;
+      const side = (H.caught % 2 ? 1 : -1);
+      b.v.x += Math.sin(away + side * 1.15) * T.HUNT_KNOCK;
+      b.v.z += Math.cos(away + side * 1.15) * T.HUNT_KNOCK;
+      b.v.y += 4.5;
+      b.shell = clamp01(b.shell - T.HUNT_BITE);
+      b.startle = 5.5;
+      H.caught++;
+      H.s -= 7;                      // it recoils a little, so it is not a lock
+      sim.events.push({ type: 'struck', speed: T.HUNT_KNOCK });
+    }
   }
 
   // Scratch vectors -- resolve() runs 240x/s, so it allocates nothing.

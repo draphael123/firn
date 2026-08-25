@@ -693,3 +693,92 @@ export function stepFlock(flock, t, cx, cz) {
   }
   flock.geometry.attributes.position.needsUpdate = true;
 }
+
+// ------------------------------------------------------------- the Warden
+
+/**
+ * The thing on the road behind you.
+ *
+ * Built to read as a SILHOUETTE and nothing else. You will almost always see it
+ * at distance, through fog, while looking the other way -- so it is a heavy
+ * dark mass with a low head and a wide shoulder line, sized well above the ball
+ * so that "how close is it" is answerable from a glance at its height in frame
+ * rather than from any detail.
+ *
+ * It is pale-furred rather than black: the causeway and its kerbs are the
+ * darkest things in this world, and a black shape against them disappears
+ * exactly when it matters. Against fog and pale rock, bone-white reads.
+ */
+export function buildWarden() {
+  const g = new THREE.Group();
+  const hide = new THREE.MeshStandardMaterial({ color: 0xd8dcd8, roughness: 0.94, flatShading: true });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x2b2f31, roughness: 0.8, flatShading: true });
+  const ico = (d) => new THREE.IcosahedronGeometry(1, d);
+
+  const put = (geo, mat, sx, sy, sz, px, py, pz, rx = 0) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.scale.set(sx, sy, sz); m.position.set(px, py, pz); m.rotation.x = rx;
+    g.add(m); return m;
+  };
+
+  /* Proportions matter more than parts. The first version put the arms out at
+   * +-1.6 with the hands on the deck, which from behind -- the angle you will
+   * always see it from -- read as a white crab rather than as something
+   * upright and heavy. Narrow, TALL and hunched: a mass that stands well over
+   * the kerbs, with everything tucked inside the shoulder line. */
+  put(ico(2), hide, 1.30, 1.75, 1.35, 0, 3.0, 0, 0.20);     // barrel chest
+  put(ico(1), hide, 1.72, 0.95, 1.15, 0, 4.15, 0.10);       // shoulders
+  put(ico(1), hide, 1.05, 0.80, 1.00, 0, 1.55, -0.05);      // haunches
+  // the head sits low between the shoulders and pushed forward
+  const head = put(ico(1), hide, 0.70, 0.72, 0.88, 0, 3.95, 1.00, 0.34);
+  put(ico(0), dark, 0.38, 0.30, 0.44, 0, 3.72, 1.72, 0.2);  // muzzle
+  for (const sx of [-1, 1]) {
+    put(ico(1), hide, 0.44, 1.45, 0.48, sx * 1.10, 2.75, 0.28, 0.12);  // arms, in tight
+    put(ico(0), dark, 0.38, 0.30, 0.46, sx * 1.10, 1.45, 0.55);        // hands, hanging
+    put(ico(1), hide, 0.52, 1.05, 0.58, sx * 0.58, 0.95, -0.10);       // legs
+  }
+  const eyes = [];
+  for (const sx of [-1, 1]) {
+    const e = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6),
+      new THREE.MeshStandardMaterial({ color: 0x120c08, emissive: 0xffb642, emissiveIntensity: 2.2 }));
+    e.scale.setScalar(0.095);
+    e.position.set(sx * 0.22, 4.02, 1.58);
+    eyes.push(e); g.add(e);
+  }
+  g.userData.eyes = eyes;
+  g.userData.head = head;
+  return g;
+}
+
+/**
+ * A bell-pull: the only thing in the game you can hit back with.
+ *
+ * A frame and a hanging bell, deliberately the same object as the two bells
+ * that stand at every stage's start and end -- the rite already has bells in
+ * it, so the boss's one verb is made of furniture the player has been walking
+ * past for nine stages rather than of a new idea introduced at the end.
+ */
+export function buildBellPull(x, y, z, r) {
+  const g = new THREE.Group();
+  const dark = new THREE.MeshStandardMaterial({ color: 0x1e2226, roughness: 0.6, metalness: 0.4, flatShading: true });
+  const brass = new THREE.MeshStandardMaterial({ color: 0xc9a961, roughness: 0.38, metalness: 0.75, flatShading: true });
+  const postG = new THREE.BoxGeometry(0.3, 4.2, 0.3);
+  for (const sx of [-1.5, 1.5]) {
+    const m = new THREE.Mesh(postG, dark);
+    m.position.set(sx, 2.1, 0);
+    g.add(m);
+  }
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.3, 0.3), dark);
+  beam.position.y = 4.2; g.add(beam);
+  const bell = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 1.0, 1.6, 12, 1, true), brass);
+  bell.position.y = 3.1; g.add(bell);
+  // the pull itself: a ring at ball height, which is what you actually drive into
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 0.5, 0.13, 8, 20), brass);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.9;
+  g.add(ring);
+  g.userData.bell = bell;
+  g.userData.ring = ring;
+  g.position.set(x, y - 0.9, z);
+  return g;
+}

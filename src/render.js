@@ -19,7 +19,7 @@ import { T, radiusFor, mulberry32 } from './sim.js';
 import { buildBall, updateBall, ballImpact } from './ball.js';
 import { Director } from './camera.js';
 import { buildStageProps, buildWorldProps, buildVent, stepSteam,
-         buildFlock, stepFlock, softSprite } from './props.js';
+         buildFlock, stepFlock, softSprite, buildWarden, buildBellPull } from './props.js';
 import { worldOf, gradeFor, buildGround, buildBackdrop, ridgeRing, deckTexture, GROUND_Y } from './worlds.js';
 
 const C = {
@@ -702,6 +702,7 @@ export class View {
     const wx = this.world;
 
     this.vents.length = 0;
+    this.addHunt(stage);
     for (const h of stage.heat) this.addHeat(h, wx);
     this.addGoal(stage);
     this.placeDecor(stage);
@@ -710,6 +711,53 @@ export class View {
 
     // A cold sun for the hot stages, so warmth has a visible source.
     this.key.intensity = 2.1 + Math.min(1.4, stage.warmth * 90);
+  }
+
+  /** The Warden and its bells. Absent on every stage but the boss. */
+  addHunt(stage) {
+    this.warden = null;
+    this.bellPulls = [];
+    if (!stage.hunt) return;
+    this.warden = buildWarden();
+    this.stageGroup.add(this.warden);
+    for (const b of stage.hunt.bells) {
+      const pull = buildBellPull(b[0], b[1], b[2], b[3]);
+      this.bellPulls.push(pull);
+      this.stageGroup.add(pull);
+    }
+  }
+
+  /** Walk it along the road and swing any bell that has just been rung. */
+  updateHunt(sim, dt) {
+    if (!this.warden || !sim.hunt) return;
+    const H = sim.hunt;
+    const w = this.warden;
+    w.position.set(H.p.x, H.p.y, H.p.z);
+
+    /* Face along the road. Its own position a moment ago is a cheaper and
+     * steadier heading than differentiating the route: it never flips at a
+     * waypoint the way an exact tangent does. */
+    const dx = H.p.x - (this._huntPrev ? this._huntPrev.x : H.p.x);
+    const dz = H.p.z - (this._huntPrev ? this._huntPrev.z : H.p.z);
+    if (dx * dx + dz * dz > 1e-4) this._huntYaw = Math.atan2(dx, dz);
+    w.rotation.y = this._huntYaw || 0;
+    this._huntPrev = { x: H.p.x, z: H.p.z };
+
+    // a lumbering gait, stopped dead while it is staggered
+    const moving = H.stagger <= 0 ? 1 : 0;
+    this._huntGait = (this._huntGait || 0) + dt * 3.4 * moving;
+    w.position.y += Math.abs(Math.sin(this._huntGait)) * 0.34;
+    w.rotation.z = Math.sin(this._huntGait) * 0.06;
+    if (w.userData.head) w.userData.head.rotation.x = 0.30 + Math.sin(this._huntGait * 2) * 0.08;
+    for (const e of w.userData.eyes) e.material.emissiveIntensity = H.stagger > 0 ? 0.3 : 2.2;
+
+    for (let i = 0; i < this.bellPulls.length; i++) {
+      const p = this.bellPulls[i];
+      if (!H.rung[i]) continue;
+      p.userData.rungT = (p.userData.rungT || 0) + dt;
+      p.userData.bell.rotation.z = Math.sin(p.userData.rungT * 9) * 0.35 * Math.exp(-p.userData.rungT * 1.1);
+      p.userData.ring.material.emissiveIntensity = 0;
+    }
   }
 
   /** Grates are drawn as real bars so the gap you fall through is legible. */
@@ -794,6 +842,7 @@ export class View {
 
     updateBall(this.B, sim, dt, this.settings);
 
+    this.updateHunt(sim, dt);
     this.director.update(this, sim, dt);
     // The steering transform reads this; it is the camera's heading around the
     // ball, and it has to be refreshed wherever the director moves the camera.

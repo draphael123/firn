@@ -189,6 +189,22 @@ export class Audio {
       setTimeout(() => this.blip(f, 0.07, 0.85, 'sine'), i * 130));
   }
 
+  /* The bell. It is the player's one act of aggression in the whole game, so it
+   * gets a real sound: a struck fundamental with two inharmonic partials above
+   * it, which is roughly what makes a bell a bell rather than a beep. */
+  bell() {
+    [
+      [392, 0.9, 0.5], [932, 0.55, 0.30], [1540, 0.38, 0.16],
+    ].forEach(([f, d, g]) => this.blip(f, d, g, 'sine'));
+    this.thump(96, 0.30, 0.6);
+  }
+
+  /** Struck by the Warden: low, and it takes the room with it. */
+  struck() {
+    this.thump(28, 0.34, 1.8);
+    this.blip(88, 0.16, 1.2, 'sawtooth');
+  }
+
   lose(reason) {
     if (reason === 'woke') { this.thump(30, 0.3, 1.6); this.blip(120, 0.12, 1.4, 'sawtooth'); }
     else { this.blip(220, 0.07, 0.7, 'sine'); this.thump(44, 0.16, 0.8); }

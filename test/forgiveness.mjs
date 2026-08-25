@@ -94,6 +94,10 @@ console.log('(the pilot is the same; only the hands change)\n');
 
 const rows = [];
 for (const st of STAGES) {
+  /* The boss is checked by test/boss-check.mjs, which knows about the bells.
+   * A waypoint pilot here has no idea they exist, so it would be measuring a
+   * stage nobody would ever play that way. */
+  if (st.boss) continue;
   const stage = S.prepareStage(st);
   const line = [];
   for (const [name, model] of MODELS) {

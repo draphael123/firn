@@ -60,6 +60,10 @@ console.log(`  grate gap    ${GRATE_GAP}  -> falls through below shell ${GRATE_S
 
 let lastWarmth = -1;
 for (const st of STAGES) {
+  /* The boss is checked by test/boss-check.mjs, which knows about the bells.
+   * A waypoint pilot here has no idea they exist, so it would be measuring a
+   * stage nobody would ever play that way. */
+  if (st.boss) continue;
   const lm = landmarks(st);
   console.log(`\n${st.numeral}. ${st.name}   [${st.world}]  warmth ${st.warmth}`);
 
