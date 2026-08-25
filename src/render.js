@@ -16,6 +16,8 @@
 
 import * as THREE from '../vendor/three.module.js';
 import { T, radiusFor, mulberry32 } from './sim.js';
+import { weatherFor, buildStageProps, buildWorldProps, buildVent, stepSteam,
+         buildFlock, stepFlock, SEA_Y } from './props.js';
 
 const C = {
   fog:    0x0d151a,
@@ -57,9 +59,6 @@ function makeEnvironment(renderer) {
 
 /** How much of the stage tilt the camera offset inherits. See update(). */
 const CAM_TILT_FOLLOW = 0.62;
-
-/** How far below the causeway the frozen sea sits. */
-const SEA_Y = -74;
 
 /**
  * A ring of mountain silhouette. Heights come from layered sines with
@@ -208,6 +207,7 @@ export class View {
     // --- light. A cold key from high behind, a dim warm bounce from below.
     const hemi = new THREE.HemisphereLight(0x5b7f92, 0x1b262c, 1.5);
     this.scene.add(hemi);
+    this.hemi = hemi;
     const key = new THREE.DirectionalLight(0xe8f2f7, 2.6);
     key.position.set(-40, 70, -30);
     key.castShadow = !!settings.shadows;
@@ -258,6 +258,10 @@ export class View {
     this._v = new THREE.Vector3();
     this._ballWorld = new THREE.Vector3();
     this._ray = new THREE.Raycaster();
+    this.vents = [];
+    this.flock = buildFlock();
+    this.scene.add(this.flock);
+    this.buildSpray();
   }
 
   /** A gradient dome instead of a flat clear colour. A stage floating in a
@@ -287,6 +291,21 @@ export class View {
     }));
     this.sky.frustumCulled = false;
     this.scene.add(this.sky);
+  }
+
+  /** Re-grade the dome. The air changes as the route descends into warmth. */
+  tintSky(topHex, midHex, botHex) {
+    const geo = this.sky.geometry;
+    const pos = geo.attributes.position, col = geo.attributes.color;
+    const top = new THREE.Color(topHex), mid = new THREE.Color(midHex), bot = new THREE.Color(botHex);
+    const c = new THREE.Color();
+    for (let i = 0; i < pos.count; i++) {
+      const h = pos.getY(i) / 700;
+      if (h > 0) c.copy(mid).lerp(top, Math.pow(h, 0.55));
+      else c.copy(mid).lerp(bot, Math.pow(-h, 0.35));
+      col.setXYZ(i, c.r, c.g, c.b);
+    }
+    col.needsUpdate = true;
   }
 
   /* ------------------------------------------------------------- the world
@@ -446,6 +465,53 @@ export class View {
     this.ballGroup.add(this.glow);
   }
 
+  /** Snow thrown off the ball. The only near-field motion tied to your speed. */
+  buildSpray() {
+    const N = 160;
+    const pos = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) pos[i * 3 + 1] = -999;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    this.spray = new THREE.Points(g, new THREE.PointsMaterial({
+      color: 0xecf6fa, size: 0.16, sizeAttenuation: true,
+      transparent: true, opacity: 0.7, depthWrite: false,
+    }));
+    this.spray.frustumCulled = false;
+    this.sprayV = new Float32Array(N * 3);
+    this.sprayN = N;
+    this.sprayAt = 0;
+    this.stageGroup.add(this.spray);
+  }
+
+  updateSpray(sim, dt) {
+    const a = this.spray.geometry.attributes.position.array;
+    const v = this.sprayV;
+    const b = sim.ball;
+    const speed = Math.hypot(b.v.x, b.v.z);
+    // emit from the contact point, backwards, when moving fast on the ground
+    if (dt > 0 && b.grounded && speed > 7) {
+      const emit = Math.min(5, Math.floor(speed * dt * 14));
+      for (let e = 0; e < emit; e++) {
+        const i = this.sprayAt = (this.sprayAt + 1) % this.sprayN;
+        const j = i * 3;
+        a[j] = b.p.x + (Math.random() - 0.5) * b.r;
+        a[j + 1] = b.p.y - b.r * 0.8;
+        a[j + 2] = b.p.z + (Math.random() - 0.5) * b.r;
+        v[j] = -b.v.x * 0.18 + (Math.random() - 0.5) * 2.4;
+        v[j + 1] = 1.4 + Math.random() * 2.6;
+        v[j + 2] = -b.v.z * 0.18 + (Math.random() - 0.5) * 2.4;
+      }
+    }
+    for (let i = 0; i < this.sprayN; i++) {
+      const j = i * 3;
+      if (a[j + 1] < -900) continue;
+      v[j + 1] -= 16 * dt;
+      a[j] += v[j] * dt; a[j + 1] += v[j + 1] * dt; a[j + 2] += v[j + 2] * dt;
+      if (a[j + 1] < b.p.y - 3) a[j + 1] = -999;
+    }
+    this.spray.geometry.attributes.position.needsUpdate = true;
+  }
+
   buildSnow() {
     const n = 2600;
     const pos = new Float32Array(n * 3);
@@ -509,9 +575,28 @@ export class View {
       this.solids.push(m);   // only real geometry occludes; decor must not
     }
 
-    for (const h of stage.heat) this.addHeat(h);
+    // Weather is derived from the stage's own warmth, so the three stages read
+    // as one descent rather than three test tracks.
+    const wx = weatherFor(stage);
+    this.weather = wx;
+    this.scene.fog.color.setHex(wx.fog);
+    this.scene.fog.near = wx.fogNear;
+    this.scene.fog.far = wx.fogFar;
+    this.renderer.setClearColor(wx.fog, 1);
+    this.tintSky(wx.skyTop, wx.skyMid, wx.skyBot);
+    this.key.color.setHex(wx.keyColor);
+    this.key.intensity = wx.keyPower;
+    this.hemi.color.setHex(wx.hemiSky);
+    this.hemi.intensity = wx.ambient;
+    this.snowMat.size = wx.snowSize;
+    this.snowMat.opacity = wx.snowOpacity;
+
+    this.vents.length = 0;
+    for (const h of stage.heat) this.addHeat(h, wx);
     this.addGoal(stage);
     this.placeDecor(stage);
+    this.stageGroup.add(buildStageProps(stage, wx));
+    this.decor.add(buildWorldProps(stage, wx));
 
     // A cold sun for the hot stages, so warmth has a visible source.
     this.key.intensity = 2.1 + Math.min(1.4, stage.warmth * 90);
@@ -539,25 +624,21 @@ export class View {
     this.stageGroup.add(g);
   }
 
-  addHeat(h) {
-    const geo = new THREE.SphereGeometry(h.r, 20, 14);
-    const mat = new THREE.MeshBasicMaterial({
-      color: C.ember, transparent: true, opacity: 0.055,
-      depthWrite: false, side: THREE.BackSide, blending: THREE.AdditiveBlending,
-    });
-    const m = new THREE.Mesh(geo, mat);
-    m.position.set(h.p[0], h.p[1], h.p[2]);
-    m.userData.heat = true;
-    this.stageGroup.add(m);
+  /** Heat is an OBJECT, not a coloured sphere: a scorched vent you can read at
+   *  distance, so the spend-shell decision can be planned rather than found. */
+  addHeat(h, wx) {
+    const vent = buildVent(h, wx);
+    this.stageGroup.add(vent);
+    this.vents.push(vent);
 
     const l = new THREE.PointLight(C.ember, Math.min(9, h.q * 70), h.r * 2.2, 2);
     l.position.set(h.p[0], h.p[1] + 1.5, h.p[2]);
     this.stageGroup.add(l);
 
-    // a scorched ring on the deck, so the danger reads from a distance
+    // a scorched halo on the deck, so the reach of the heat is legible
     const ring = new THREE.Mesh(
-      new THREE.RingGeometry(h.r * 0.25, h.r * 0.98, 40),
-      new THREE.MeshBasicMaterial({ color: C.ember, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide }),
+      new THREE.RingGeometry(h.r * 0.3, h.r * 0.98, 40),
+      new THREE.MeshBasicMaterial({ color: C.ember, transparent: true, opacity: 0.14, depthWrite: false, side: THREE.DoubleSide }),
     );
     ring.rotation.x = -Math.PI / 2;
     ring.position.set(h.p[0], h.p[1] + 0.02, h.p[2]);
@@ -725,6 +806,9 @@ export class View {
       }
     }
 
+    for (const v of this.vents) stepSteam(v, dt);
+    stepFlock(this.flock, sim.time, this.camera.position.x, this.camera.position.z);
+    this.updateSpray(sim, dt);
     this.updateSnow(dt);
     if (this.goalGroup) this.goalGroup.rotation.y += dt * 0.35;
 
